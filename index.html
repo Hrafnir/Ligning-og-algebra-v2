@@ -25,8 +25,7 @@
 
         <div class="control-group">
             <label for="example-select">Velg et eksempel: </label>
-            <select id="example-select">
-            </select>
+            <select id="example-select"></select>
             <button id="btn-load-example">Last inn</button>
         </div>
         
@@ -48,9 +47,15 @@
         </div>
     </div>
 
-    <div class="export-container">
-        <button id="btn-export-tab" class="btn-export" style="background-color: #28a745; margin-right: 10px;">🖼️ Åpne bilde i ny fane</button>
-        <button id="btn-export-dl" class="btn-export">⬇️ Last ned bilde</button>
+    <div class="export-settings">
+        <h3 style="margin-bottom: 5px;">Lagre dokumentasjon</h3>
+        <input type="text" id="export-title" placeholder="Tittel (f.eks. Oppgave 3a)">
+        <textarea id="export-desc" placeholder="Forklar hva du har gjort, eller skriv inn oppgaveteksten..." rows="2"></textarea>
+        
+        <div class="export-container">
+            <button id="btn-export-tab" class="btn-export" style="background-color: #28a745; margin-right: 10px;">🖼️ Åpne bilde i ny fane</button>
+            <button id="btn-export-dl" class="btn-export">⬇️ Last ned bilde</button>
+        </div>
     </div>
 
     <script src="script.js"></script>
