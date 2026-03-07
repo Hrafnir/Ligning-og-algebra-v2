@@ -1,4 +1,4 @@
-/* Version: #24 - Avansert faktorisering og streng manuell brøk-validering */
+/* Version: #25 - Bugfix: ID-bevaring for menyer og manuell stryking */
 
 const examples =[
     { label: "2(x + 3) = 14", left: "2(x + 3)", right: "14", mode: "equation", group: "Ligninger (Parenteser)" },
@@ -9,7 +9,8 @@ const examples =[
     { label: "x^2 + 6^2 = 10^2", left: "x^2 + 6^2", right: "10^2", mode: "equation", group: "Ligninger (Brøk & Potens)" },
     { label: "x^2 + 4x + 4", left: "x^2 + 4x + 4", right: "0", mode: "expression", group: "Algebra (Forenkle & Faktorisere)" },
     { label: "x^2 - 25", left: "x^2 - 25", right: "0", mode: "expression", group: "Algebra (Forenkle & Faktorisere)" },
-    { label: "(x^2 - 9) / (x - 3)", left: "(x^2 - 9) / (x - 3)", right: "0", mode: "expression", group: "Algebra (Forenkle & Faktorisere)" }
+    { label: "(x^2 - 9) / (x - 3)", left: "(x^2 - 9) / (x - 3)", right: "0", mode: "expression", group: "Algebra (Forenkle & Faktorisere)" },
+    { label: "256 / 64 (Fra bildet)", left: "256 / 64", right: "0", mode: "expression", group: "Algebra (Forenkle & Faktorisere)" }
 ];
 
 let state = {
@@ -163,22 +164,14 @@ function polyToText(poly) {
     return str;
 }
 
-// === SEKSJON: AST Parser ===
+// === SEKSJON: AST Parser & Verktøy ===
 
 function uid() { return Math.random().toString(36).substr(2, 9); }
 
-function cloneASTAndRenewIDs(node) {
+// NYTT/FIKSET: Bruker standard dyp kopi i stedet for å overskrive IDs. Da fungerer klikkene igjen!
+function deepClone(node) {
     if (!node) return null;
-    let cloned = JSON.parse(JSON.stringify(node));
-    function walk(n) {
-        if (n) n.id = uid();
-        if (n.elements) n.elements.forEach(e => walk(e.node));
-        if (n.left) walk(n.left);
-        if (n.right) walk(n.right);
-        if (n.inner) walk(n.inner);
-    }
-    walk(cloned);
-    return cloned;
+    return JSON.parse(JSON.stringify(node));
 }
 
 function tokenize(str) {
@@ -573,8 +566,9 @@ window.executeAction = function(id, action) {
     let lastLine = state.lines[state.lines.length - 1];
     let changed = false;
 
-    let lClone = cloneASTAndRenewIDs(lastLine.mathState.lState);
-    let rClone = cloneASTAndRenewIDs(lastLine.mathState.rState);
+    // Fiks: Bruker deepClone i stedet for å overskrive IDs
+    let lClone = deepClone(lastLine.mathState.lState);
+    let rClone = deepClone(lastLine.mathState.rState);
 
     let actionLabel = "Forenklet";
     if (action.includes('FACTORIZE')) actionLabel = "Faktoriserte uttrykk";
@@ -613,7 +607,6 @@ window.executeAction = function(id, action) {
                         let fact = tryFactorize(poly);
                         if (fact) return fact;
                         
-                        // Fallback til Felles faktor
                         if (Object.keys(poly).length > 1) {
                             let coefs = Object.keys(poly).map(k => Math.abs(poly[k]));
                             let gcd = (a, b) => b === 0 ? a : gcd(b, a % b);
@@ -661,8 +654,8 @@ window.executeAction = function(id, action) {
             });
 
             if (hasCancels) {
-                let lClean = cloneASTAndRenewIDs(lClone);
-                let rClean = cloneASTAndRenewIDs(rClone);
+                let lClean = deepClone(lClone);
+                let rClean = deepClone(rClone);
                 
                 function removeCancelsTraverse(node) {
                     if (!node) return null;
@@ -725,9 +718,7 @@ function renderAST(node) {
     let isSelected = state.cancelSelection && state.cancelSelection.includes(node.id);
     let wrap = (inner) => `<span class="interactive-node ${isSelected ? 'manual-selected' : ''}" onclick="openNodeMenu(event, '${node.id}')" oncontextmenu="openNodeMenu(event, '${node.id}')" title="Klikk for handlinger">${inner}</span>`;
     
-    // Pakker inn FlatPoly slik at de kan interageres med separat!
     if (node.type === 'FlatPoly') return wrap(renderFlatPoly(node.poly));
-    
     if (node.type === 'Cancelled') return `<span class="cancelled">${renderAST(node.inner)}</span>`;
     if (node.type === 'Pow') return wrap(`${renderAST(node.left)}<sup>${renderAST(node.right)}</sup>`);
     if (node.type === 'Parens') return wrap(`(${renderAST(node.inner)})`);
@@ -1103,8 +1094,9 @@ window.onload = () => {
         }
 
         let lastLine = state.lines[state.lines.length - 1];
-        let astOldL = cloneASTAndRenewIDs(lastLine.mathState.lState);
-        let astOldR = cloneASTAndRenewIDs(lastLine.mathState.rState);
+        // Fiks: Bruk deepClone her også
+        let astOldL = deepClone(lastLine.mathState.lState);
+        let astOldR = deepClone(lastLine.mathState.rState);
 
         function checkHasCancels(node, selection) {
             if (!node) return false;
@@ -1134,11 +1126,9 @@ window.onload = () => {
             let oldF = evaluateToFraction(oldAST);
             let newF = evaluateToFraction(newAST);
             try {
-                // Polynomdivisjon forteller oss eksakt hvilken matematisk verdi eleven strøk!
                 let topDiv = polyDivAlg(oldF.num, newF.num);
                 let botDiv = polyDivAlg(oldF.den, newF.den);
                 
-                // Er det ingen rest? Og ble telleren og nevneren delt på nøyaktig det samme uttrykket?
                 if (Object.keys(topDiv.r).length === 0 && Object.keys(botDiv.r).length === 0 && polyEquals(topDiv.q, botDiv.q)) {
                     return { valid: true, factor: topDiv.q };
                 }
