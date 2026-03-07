@@ -1,4 +1,4 @@
-/* Version: #25 - Bugfix: ID-bevaring for menyer og manuell stryking */
+/* Version: #26 - Reparasjon av historikk-logg og menyer for ligninger */
 
 const examples =[
     { label: "2(x + 3) = 14", left: "2(x + 3)", right: "14", mode: "equation", group: "Ligninger (Parenteser)" },
@@ -164,11 +164,11 @@ function polyToText(poly) {
     return str;
 }
 
-// === SEKSJON: AST Parser & Verktøy ===
+// === SEKSJON: AST Parser & Dyp Kopi ===
 
 function uid() { return Math.random().toString(36).substr(2, 9); }
 
-// NYTT/FIKSET: Bruker standard dyp kopi i stedet for å overskrive IDs. Da fungerer klikkene igjen!
+// FIKSET: Vi overskriver ikke lenger IDene, da det ødela menysystemet.
 function deepClone(node) {
     if (!node) return null;
     return JSON.parse(JSON.stringify(node));
@@ -464,7 +464,6 @@ window.openNodeMenu = function(e, id) {
     let poly = null;
     try { poly = evaluateToPoly(node); } catch(err) {}
 
-    // 1. Rene tall kan faktoriseres i primtall
     if (poly && Object.keys(poly).length === 1 && poly['0'] > 1 && Number.isInteger(poly['0'])) {
         let factors = getPrimeFactors(poly['0']);
         if (factors.length > 1) { 
@@ -472,7 +471,6 @@ window.openNodeMenu = function(e, id) {
         }
     }
 
-    // 2. Polynomer sjekkes for Kvadrat/Konjugatsetninger
     if (poly) {
         let fact = null;
         try { fact = tryFactorize(poly); } catch(e){}
@@ -481,7 +479,6 @@ window.openNodeMenu = function(e, id) {
         }
     }
 
-    // 3. Trekke ut felles faktor (f.eks. 2 ut av 2x + 6)
     if (poly && Object.keys(poly).length > 1) {
         let coefs = Object.keys(poly).map(k => Math.abs(poly[k]));
         let gcd = (a, b) => b === 0 ? a : gcd(b, a % b);
@@ -566,7 +563,6 @@ window.executeAction = function(id, action) {
     let lastLine = state.lines[state.lines.length - 1];
     let changed = false;
 
-    // Fiks: Bruker deepClone i stedet for å overskrive IDs
     let lClone = deepClone(lastLine.mathState.lState);
     let rClone = deepClone(lastLine.mathState.rState);
 
@@ -647,13 +643,19 @@ window.executeAction = function(id, action) {
         if (changed) {
             let hasCancels = hasCancelledNodes(lClone) || hasCancelledNodes(rClone);
 
-            state.lines.push({
-                type: 'UNSIMPLIFIED',
-                mathState: { lState: lClone, rState: rClone },
-                pastAction: actionLabel
-            });
+            // FIKS 1: Legger handlingsteksten til på den FORRIGE linjen, slik at panelet forblir åpent i bunn!
+            if (!lastLine.pastAction) {
+                lastLine.pastAction = actionLabel;
+            }
 
             if (hasCancels) {
+                // Trinn 1: Viser de røde strekene
+                state.lines.push({
+                    type: 'UNSIMPLIFIED',
+                    mathState: { lState: lClone, rState: rClone },
+                    pastAction: 'Stryker felles faktorer'
+                });
+
                 let lClean = deepClone(lClone);
                 let rClean = deepClone(rClone);
                 
@@ -666,12 +668,23 @@ window.executeAction = function(id, action) {
                     return node;
                 }
                 
+                // Trinn 2: Den rene, nye linjen (Med null, slik at input-feltet returnerer!)
                 state.lines.push({
                     type: 'READY',
                     mathState: { lState: removeCancelsTraverse(lClean), rState: removeCancelsTraverse(rClean) },
-                    pastAction: 'Stryker felles faktorer'
+                    pastAction: null
+                });
+            } else {
+                // Hvis ingen stryking, pumper vi bare den rene linjen
+                state.lines.push({
+                    type: 'READY',
+                    mathState: { lState: lClone, rState: rClone },
+                    pastAction: null // Dette sikrer at input-feltet vises nederst
                 });
             }
+
+            // Går tilbake til Action-modus slik at brukeren kan velge selv hva som skal skje videre
+            state.currentStatus = 'WAITING_FOR_ACTION';
 
             if (state.currentMode === 'equation') {
                 try {
@@ -1037,13 +1050,25 @@ window.onload = () => {
 
     const undoBtn = document.createElement('button');
     undoBtn.id = 'btn-undo';
-    undoBtn.textContent = '↩ Angre siste';
+    undoBtn.textContent = '↩ Angre siste trekk';
     undoBtn.style.backgroundColor = '#ffc107'; 
     undoBtn.style.color = '#333';
     undoBtn.style.marginLeft = '10px';
+    
+    // FIKS 2: Angre-knappen ble redesignet for å ta høyde for de "mellomstegene" 
+    // vi nå lager under manuell forkortning. Den spoler trygt tilbake til et åpent input-felt.
     undoBtn.onclick = () => {
         if (state.lines.length > 1) {
             state.lines.pop(); 
+            
+            let last = state.lines[state.lines.length - 1];
+            if (last.pastAction === 'Ferdig forkortet' || last.pastAction === 'Stryker felles faktorer') {
+                state.lines.pop();
+                last = state.lines[state.lines.length - 1];
+            }
+            
+            // Gjør linjen klar for ny input
+            last.pastAction = null;
             state.currentStatus = 'WAITING_FOR_ACTION';
             document.getElementById('success-message').classList.add('hidden');
             renderWorkspace();
@@ -1086,7 +1111,7 @@ window.onload = () => {
         renderWorkspace();
     };
 
-    // EKTE MATEMATISK VALIDERING AV STRYKING
+    // FIKS 3: Ekte matematisk validering av stryking (Fikset for input-felt)
     document.getElementById('btn-verify-cancel').onclick = () => {
         if (state.cancelSelection.length === 0) {
             alert("Du har ikke valgt noen ledd å forkorte bort ennå.");
@@ -1094,7 +1119,6 @@ window.onload = () => {
         }
 
         let lastLine = state.lines[state.lines.length - 1];
-        // Fiks: Bruk deepClone her også
         let astOldL = deepClone(lastLine.mathState.lState);
         let astOldR = deepClone(lastLine.mathState.rState);
 
@@ -1120,7 +1144,6 @@ window.onload = () => {
         let astNewL = replaceStruckWithOne(astOldL);
         let astNewR = replaceStruckWithOne(astOldR);
 
-        // Validerings-logikk
         function validateSide(oldAST, newAST, hasCancel) {
             if (!hasCancel) return { valid: true, factor: null };
             let oldF = evaluateToFraction(oldAST);
@@ -1149,7 +1172,11 @@ window.onload = () => {
             
             alert(msg);
 
-            // Lag trinn 1: Røde streker
+            // Gi forrige linje et pent navn
+            if (!lastLine.pastAction) {
+                lastLine.pastAction = 'Manuell forkorting';
+            }
+
             function applyCancelledStatus(node) {
                 if (!node) return null;
                 if (state.cancelSelection.includes(node.id)) return { type: 'Cancelled', inner: node, id: uid() };
@@ -1162,10 +1189,9 @@ window.onload = () => {
             state.lines.push({
                 type: 'UNSIMPLIFIED',
                 mathState: { lState: applyCancelledStatus(astOldL), rState: applyCancelledStatus(astOldR) },
-                pastAction: 'Manuell forkorting'
+                pastAction: 'Ferdig forkortet'
             });
 
-            // Lag trinn 2: Fjern faktorene helt 
             function globalClean(node) {
                 if (!node) return null;
                 if (node.type === 'Expr') return performLocalSimplification({ ...node, elements: node.elements.map(e => ({ sign: e.sign, node: globalClean(e.node) })) });
@@ -1177,11 +1203,12 @@ window.onload = () => {
             state.lines.push({
                 type: 'READY',
                 mathState: { lState: globalClean(astNewL), rState: globalClean(astNewR) },
-                pastAction: 'Ferdig forkortet'
+                pastAction: null // NÅ VIL PANELET VISES IGJEN!
             });
 
             state.manualCancelMode = false;
             state.cancelSelection = [];
+            state.currentStatus = 'WAITING_FOR_ACTION';
             document.getElementById('manual-cancel-panel').classList.add('hidden');
             renderWorkspace();
             
