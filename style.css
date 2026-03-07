@@ -432,3 +432,34 @@ sup {
     background: var(--accent-color);
     color: white;
 }
+
+/* --- Manuell Forkortnings-modus CSS --- */
+.manual-selected {
+    position: relative;
+    color: #999;
+}
+
+.manual-selected::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: -10%;
+    width: 120%;
+    height: 3px;
+    background-color: var(--cancel-color);
+    transform: translateY(-50%) rotate(-15deg);
+    border-radius: 2px;
+    opacity: 0.8;
+}
+
+#manual-cancel-panel {
+    background: #fff3cd;
+    border: 1px solid #ffeeba;
+    padding: 10px;
+    border-radius: 6px;
+    margin-top: 10px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    justify-content: center;
+}
