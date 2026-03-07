@@ -1,4 +1,4 @@
-/* Version: #28 - Synlig distribusjons-multiplikasjon og "Trekk sammen"-knapp */
+/* Version: #29 - Slette linjer og forbedret bilde-eksport */
 
 const examples =[
     { label: "2(x + 3) = 14", left: "2(x + 3)", right: "14", mode: "equation", group: "Ligninger (Parenteser)" },
@@ -262,7 +262,7 @@ function parseSide(sideStr) {
     return parseTokens(tokenize(sideStr));
 }
 
-// === SEKSJON: Evaluering med BRØKBESKYTTELSE ===
+// === SEKSJON: Evaluering ===
 
 function evaluateToFraction(node) {
     if (!node) return { num: {0:0}, den: {0:1} };
@@ -527,6 +527,17 @@ window.openNodeMenu = function(e, id) {
     menu.classList.remove('hidden');
 };
 
+function isPureNumber(n) {
+    if (!n || n.type !== 'FlatPoly') return false;
+    let keys = Object.keys(n.poly);
+    return keys.length === 0 || (keys.length === 1 && keys[0] === '0');
+}
+
+function createSmartMul(leftNode, rightNode, originalImplicit) {
+    let needsExplicit = isPureNumber(leftNode) && isPureNumber(rightNode);
+    return { type: 'Mul', left: leftNode, right: rightNode, implicit: needsExplicit ? false : originalImplicit, id: uid() };
+}
+
 function performLocalSimplification(node) {
     if (node.type === 'Expr' || node.type === 'FlatPoly') {
         try {
@@ -543,9 +554,8 @@ function performLocalSimplification(node) {
     if (node.type === 'Mul') {
         let isRightParen = node.right.type === 'Parens' && node.right.inner.type === 'Expr';
         let isLeftParen = node.left.type === 'Parens' && node.left.inner.type === 'Expr';
-        // Fiks: Bruker deepClone og setter alltid implicit: false under distribusjon (slik at vi tvinger frem prikken).
-        if (isRightParen) return { type: 'Expr', elements: node.right.inner.elements.map(e => ({ sign: e.sign, node: { type: 'Mul', left: deepClone(node.left), right: deepClone(e.node), implicit: false, id: uid() } })), id: uid() };
-        if (isLeftParen) return { type: 'Expr', elements: node.left.inner.elements.map(e => ({ sign: e.sign, node: { type: 'Mul', left: deepClone(e.node), right: deepClone(node.right), implicit: false, id: uid() } })), id: uid() };
+        if (isRightParen) return { type: 'Expr', elements: node.right.inner.elements.map(e => ({ sign: e.sign, node: createSmartMul(node.left, e.node, node.implicit) })), id: uid() };
+        if (isLeftParen) return { type: 'Expr', elements: node.left.inner.elements.map(e => ({ sign: e.sign, node: createSmartMul(e.node, node.right, node.implicit) })), id: uid() };
         try { return { type: 'FlatPoly', poly: evaluateToPoly(node), id: uid() }; } catch(e) {}
     }
     if (node.type === 'Div') return tryCancelFraction(node);
@@ -634,7 +644,6 @@ window.executeAction = function(id, action) {
             if (action === 'DISTRIBUTE') {
                 let isRightParen = node.right.type === 'Parens' && node.right.inner.type === 'Expr';
                 let isLeftParen = node.left.type === 'Parens' && node.left.inner.type === 'Expr';
-                // NYTT: Tvinger fram implict: false slik at &middot; (prikken) alltid vises når man løser opp!
                 if (isRightParen) return { type: 'Expr', elements: node.right.inner.elements.map(e => ({ sign: e.sign, node: { type: 'Mul', left: deepClone(node.left), right: deepClone(e.node), implicit: false, id: uid() } })), id: uid() };
                 if (isLeftParen) return { type: 'Expr', elements: node.left.inner.elements.map(e => ({ sign: e.sign, node: { type: 'Mul', left: deepClone(e.node), right: deepClone(node.right), implicit: false, id: uid() } })), id: uid() };
             }
@@ -905,10 +914,33 @@ function renderWorkspace() {
 
         if (line.pastAction) {
             actionDiv.innerHTML = `<span class="action-box">${line.pastAction}</span>`;
+            
+            // NYTT: Legger til slette-knapp (✖) på loggførte rader, så lenge det ikke er den eneste raden
+            if (state.lines.length > 1) {
+                const delBtn = document.createElement('button');
+                delBtn.className = 'delete-line-btn';
+                delBtn.innerHTML = '✖';
+                delBtn.title = 'Slett denne linjen';
+                delBtn.onclick = () => {
+                    state.lines.splice(index, 1);
+                    
+                    // Sjekk om ny siste-rad utgjør en løsning (I tilfelle brukeren slettet løsnings-raden)
+                    let newLast = state.lines[state.lines.length - 1];
+                    if (state.currentMode === 'equation' && isSolved(newLast.mathState.lState, newLast.mathState.rState)) {
+                        state.currentStatus = 'SOLVED';
+                        document.getElementById('success-message').classList.remove('hidden');
+                    } else {
+                        state.currentStatus = 'WAITING_FOR_ACTION';
+                        document.getElementById('success-message').classList.add('hidden');
+                    }
+                    renderWorkspace();
+                };
+                actionDiv.appendChild(delBtn);
+            }
+            
         } else if (isLastRow && state.currentMode === 'equation') {
             if (state.currentStatus === 'WAITING_FOR_ACTION' || state.currentStatus === 'SOLVED') {
                 if (state.currentStatus !== 'SOLVED') {
-                    // NYTT: Trekk Sammen-knappen lagt til i det aktive panelet for å spare tid
                     actionDiv.innerHTML = `
                         <div class="active-action-panel">
                             <select id="op-select">
@@ -928,6 +960,21 @@ function renderWorkspace() {
             } else if (state.currentStatus === 'WAITING_FOR_SIMPLIFY') {
                 actionDiv.innerHTML = `<button id="btn-simplify" class="btn-small btn-simplify">Regn ut & Forenkle</button>`;
                 setTimeout(() => document.getElementById('btn-simplify').addEventListener('click', handleSimplify), 0);
+            }
+            
+            // Kan også slette aktive rader hvis man har rotet seg inn i en blindvei
+            if (state.lines.length > 1) {
+                const delBtn = document.createElement('button');
+                delBtn.className = 'delete-line-btn';
+                delBtn.innerHTML = '✖';
+                delBtn.title = 'Slett denne linjen';
+                delBtn.onclick = () => {
+                    state.lines.splice(index, 1);
+                    state.currentStatus = 'WAITING_FOR_ACTION';
+                    document.getElementById('success-message').classList.add('hidden');
+                    renderWorkspace();
+                };
+                actionDiv.appendChild(delBtn);
             }
         }
 
@@ -971,7 +1018,6 @@ function bindActionEvents() {
         input.focus();
     }
     
-    // Logikk for den nye "Trekk sammen" knappen
     if (btnAutoSimplifyRow) {
         btnAutoSimplifyRow.addEventListener('click', () => {
             let lastLine = state.lines[state.lines.length - 1];
@@ -1046,7 +1092,8 @@ document.getElementById('btn-load-custom').addEventListener('click', () => {
     if(l && r) startEquation(l, r, mode); else alert("Fyll inn feltet.");
 });
 
-document.getElementById('btn-export-png').addEventListener('click', () => {
+// NYTT: Sentralisert bilde-eksport funksjon som tar parameter
+function exportImage(mode) {
     const container = document.getElementById('workspace-container');
     
     const titleEl = document.createElement('h2');
@@ -1070,17 +1117,40 @@ document.getElementById('btn-export-png').addEventListener('click', () => {
     container.classList.add('export-mode');
     
     html2canvas(container, { backgroundColor: '#ffffff', scale: 2 }).then(canvas => {
-        let link = document.createElement('a');
-        let safeDateStr = dateStr.replace(/\./g, '-');
-        link.download = `matematikk-losning-${safeDateStr}.png`; 
-        link.href = canvas.toDataURL('image/png');
-        link.click();
+        let dataUrl = canvas.toDataURL('image/png');
+        
+        if (mode === 'download') {
+            let link = document.createElement('a');
+            let safeDateStr = dateStr.replace(/\./g, '-');
+            link.download = `matematikk-losning-${safeDateStr}.png`; 
+            link.href = dataUrl;
+            link.click();
+        } else if (mode === 'tab') {
+            // Åpner trygt i ny fane ved å bygge et basic HTML-dokument med bildet i
+            let newTab = window.open();
+            if (newTab) {
+                newTab.document.write(`
+                    <html>
+                    <head><title>Oppgaveløsning</title></head>
+                    <body style="margin: 0; background-color: #f4f7f6; display: flex; justify-content: center; padding: 20px;">
+                        <img src="${dataUrl}" style="max-width: 100%; height: auto; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border-radius: 8px;">
+                    </body>
+                    </html>
+                `);
+                newTab.document.close();
+            } else {
+                alert("Kunne ikke åpne bildet i ny fane. Kanskje nettleseren din blokkerer popups?");
+            }
+        }
         
         container.classList.remove('export-mode');
         titleEl.remove();
         subtitleEl.remove();
     });
-});
+}
+
+document.getElementById('btn-export-dl').addEventListener('click', () => exportImage('download'));
+document.getElementById('btn-export-tab').addEventListener('click', () => exportImage('tab'));
 
 window.onload = () => {
     initExamples();
