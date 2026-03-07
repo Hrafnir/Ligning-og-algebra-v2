@@ -1,4 +1,3 @@
-<!-- Version: #18 -->
 <!DOCTYPE html>
 <html lang="no">
 <head>
@@ -6,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Balansemetoden & Interaktiv Algebra</title>
     <link rel="stylesheet" href="style.css">
-    <!-- Inkluderer html2canvas for å kunne ta skjermbilde (PNG-eksport) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </head>
 <body>
@@ -14,11 +12,9 @@
     <header>
         <h1>Balansemetoden & Interaktiv Algebra</h1>
         <p>Utfør operasjoner på begge sider av ligninger, eller forenkle uttrykk ved å klikke på parenteser, potenser og kvadratsetninger!</p>
-        <button id="btn-export-png" class="btn-export">📸 Lagre som bilde (PNG)</button>
     </header>
 
     <div class="controls">
-        <!-- Modusvelger for å skille mellom Ligning og Uttrykk -->
         <div class="control-group mode-selector">
             <label for="mode-select"><strong>Modus: </strong></label>
             <select id="mode-select">
@@ -29,9 +25,7 @@
 
         <div class="control-group">
             <label for="example-select">Velg et eksempel: </label>
-            <!-- Javascript (script.js) fyller nå denne listen automatisk med alle våre oppgaver -->
-            <select id="example-select">
-            </select>
+            <select id="example-select"></select>
             <button id="btn-load-example">Last inn</button>
         </div>
         
@@ -45,17 +39,18 @@
         </div>
     </div>
 
-    <!-- Denne containeren vil bli omgjort til bilde ved eksport -->
     <div id="workspace-container">
         <div id="workspace">
-            <!-- Rader genereres her av JavaScript -->
-        </div>
+            </div>
         <div id="success-message" class="hidden">
             🎉 Gratulerer! Oppgaven er løst! 🎉
         </div>
     </div>
 
+    <div class="export-container">
+        <button id="btn-export-png" class="btn-export">📸 Lagre oppgaven som bilde (PNG)</button>
+    </div>
+
     <script src="script.js"></script>
 </body>
 </html>
-<!-- Version: #18 -->
