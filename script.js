@@ -1,6 +1,5 @@
-/* Version: #23 - Steg-for-steg logg, interaktive tall og manuell forkortning */
+/* Version: #24 - Avansert faktorisering og streng manuell brøk-validering */
 
-// === SEKSJON: Data & Eksempler ===
 const examples =[
     { label: "2(x + 3) = 14", left: "2(x + 3)", right: "14", mode: "equation", group: "Ligninger (Parenteser)" },
     { label: "5x + 10 = 25", left: "5x + 10", right: "25", mode: "equation", group: "Ligninger (Lineære)" },
@@ -143,6 +142,25 @@ function buildFactorTree(factors) {
     let left = { type: 'FlatPoly', poly: {0: factors[0]}, id: uid() };
     let right = buildFactorTree(factors.slice(1));
     return { type: 'Mul', left: left, right: right, implicit: false, id: uid() };
+}
+
+function polyToText(poly) {
+    let keys = Object.keys(poly).map(Number).sort((a,b)=>b-a);
+    if (keys.length === 0) return '0';
+    let str = '';
+    for (let i = 0; i < keys.length; i++) {
+        let exp = keys[i];
+        let coef = poly[exp];
+        let abs = Math.abs(coef);
+        
+        if (i > 0) str += coef < 0 ? ' - ' : ' + ';
+        else if (coef < 0) str += '-';
+
+        if (exp === 0) str += abs;
+        else if (exp === 1) str += (abs === 1 ? '' : abs) + 'x';
+        else str += (abs === 1 ? '' : abs) + 'x^' + exp;
+    }
+    return str;
 }
 
 // === SEKSJON: AST Parser ===
@@ -305,22 +323,6 @@ function evaluateToPoly(node) {
 
 function tryFactorize(poly) {
     let keys = Object.keys(poly).map(Number).sort((a,b)=>b-a);
-    
-    // Trekk ut felles faktor i enkle polynomer (eks: 2x + 12 -> 2(x+6))
-    let coefs = keys.map(k => Math.abs(poly[k]));
-    let gcd = (a, b) => b === 0 ? a : gcd(b, a % b);
-    let common = coefs.reduce((a, b) => gcd(a, b), coefs[0] || 1);
-    
-    if (common > 1 && keys.length > 1) { 
-        let remainder = {};
-        for(let k of keys) remainder[k] = poly[k] / common;
-        return {
-            type: 'Mul',
-            left: { type: 'FlatPoly', poly: {0: common}, id: uid() },
-            right: { type: 'Parens', inner: { type: 'FlatPoly', poly: remainder, id: uid() }, id: uid() },
-            implicit: true, id: uid()
-        };
-    }
 
     if (keys.length === 2 && keys.includes(2) && keys.includes(0)) {
         let a = poly[2], c = poly[0];
@@ -450,7 +452,6 @@ window.openNodeMenu = function(e, id) {
     e.preventDefault();
     e.stopPropagation();
 
-    // Avskjærer klikket hvis vi er i manuell stryke-modus
     if (state.manualCancelMode) {
         let idx = state.cancelSelection.indexOf(id);
         if (idx === -1) state.cancelSelection.push(id);
@@ -470,6 +471,7 @@ window.openNodeMenu = function(e, id) {
     let poly = null;
     try { poly = evaluateToPoly(node); } catch(err) {}
 
+    // 1. Rene tall kan faktoriseres i primtall
     if (poly && Object.keys(poly).length === 1 && poly['0'] > 1 && Number.isInteger(poly['0'])) {
         let factors = getPrimeFactors(poly['0']);
         if (factors.length > 1) { 
@@ -477,23 +479,32 @@ window.openNodeMenu = function(e, id) {
         }
     }
 
+    // 2. Polynomer sjekkes for Kvadrat/Konjugatsetninger
+    if (poly) {
+        let fact = null;
+        try { fact = tryFactorize(poly); } catch(e){}
+        if (fact) {
+            options.push({ label: 'Faktoriser uttrykk (Kvadrat/Konjugat)', action: 'FACTORIZE_POLY' });
+        }
+    }
+
+    // 3. Trekke ut felles faktor (f.eks. 2 ut av 2x + 6)
     if (poly && Object.keys(poly).length > 1) {
         let coefs = Object.keys(poly).map(k => Math.abs(poly[k]));
         let gcd = (a, b) => b === 0 ? a : gcd(b, a % b);
         let common = coefs.reduce((a, b) => gcd(a, b), coefs[0] || 1);
         if (common > 1) {
-            options.push({ label: `Faktoriser ut ${common}`, action: 'FACTORIZE_POLY' });
+            options.push({ label: `Faktoriser ut ${common}`, action: 'FACTORIZE_GCD' });
         }
     }
 
-    if (node.type === 'Mul' && (node.left.type === 'Parens' || node.right.type === 'Parens')) {
-        options.push({ label: 'Multipliser inn (Løs opp parentes)', action: 'DISTRIBUTE' });
-    }
-
-    if (node.type === 'Expr' && node.elements.length > 1) {
-        options.push({ label: 'Trekk sammen uttrykk', action: 'EVALUATE' });
-    } else if (node.type === 'Div') {
+    if (node.type === 'Div') {
+        options.push({ label: 'Faktoriser teller & nevner', action: 'FACTORIZE_FRACTION' });
         options.push({ label: 'Forkort brøk automatisk', action: 'SIMPLIFY' });
+    } else if (node.type === 'Mul' && (node.left.type === 'Parens' || node.right.type === 'Parens')) {
+        options.push({ label: 'Multipliser inn (Løs opp parentes)', action: 'DISTRIBUTE' });
+    } else if (node.type === 'Expr' && node.elements.length > 1) {
+        options.push({ label: 'Trekk sammen uttrykk', action: 'EVALUATE' });
     } else {
         options.push({ label: 'Forenkle', action: 'SIMPLIFY' });
     }
@@ -562,12 +573,11 @@ window.executeAction = function(id, action) {
     let lastLine = state.lines[state.lines.length - 1];
     let changed = false;
 
-    // Kopierer tilstanden i stedet for å redigere eksisterende
     let lClone = cloneASTAndRenewIDs(lastLine.mathState.lState);
     let rClone = cloneASTAndRenewIDs(lastLine.mathState.rState);
 
     let actionLabel = "Forenklet";
-    if (action === 'FACTORIZE_NUM' || action === 'FACTORIZE_POLY') actionLabel = "Faktoriserte uttrykk";
+    if (action.includes('FACTORIZE')) actionLabel = "Faktoriserte uttrykk";
     if (action === 'DISTRIBUTE') actionLabel = "Løste opp parentes";
 
     function traverseAndReplace(node) {
@@ -578,6 +588,52 @@ window.executeAction = function(id, action) {
             if (action === 'EVALUATE') return { type: 'FlatPoly', poly: evaluateToPoly(node), id: uid() };
             if (action === 'FACTORIZE_NUM') return buildFactorTree(getPrimeFactors(evaluateToPoly(node)['0']));
             if (action === 'FACTORIZE_POLY') return tryFactorize(evaluateToPoly(node)) || node;
+            
+            if (action === 'FACTORIZE_GCD') {
+                let poly = evaluateToPoly(node);
+                let coefs = Object.keys(poly).map(k => Math.abs(poly[k]));
+                let gcd = (a, b) => b === 0 ? a : gcd(b, a % b);
+                let common = coefs.reduce((a, b) => gcd(a, b), coefs[0] || 1);
+                let remainder = {};
+                for(let k in poly) remainder[k] = poly[k] / common;
+                return {
+                    type: 'Mul', left: { type: 'FlatPoly', poly: {0: common}, id: uid() },
+                    right: { type: 'Parens', inner: { type: 'FlatPoly', poly: remainder, id: uid() }, id: uid() },
+                    implicit: true, id: uid()
+                };
+            }
+
+            if (action === 'FACTORIZE_FRACTION') {
+                function factorizeNode(n) {
+                    try {
+                        let poly = evaluateToPoly(n);
+                        if (Object.keys(poly).length === 1 && Number.isInteger(poly['0']) && poly['0'] > 1) {
+                            return buildFactorTree(getPrimeFactors(poly['0']));
+                        }
+                        let fact = tryFactorize(poly);
+                        if (fact) return fact;
+                        
+                        // Fallback til Felles faktor
+                        if (Object.keys(poly).length > 1) {
+                            let coefs = Object.keys(poly).map(k => Math.abs(poly[k]));
+                            let gcd = (a, b) => b === 0 ? a : gcd(b, a % b);
+                            let common = coefs.reduce((a, b) => gcd(a, b), coefs[0] || 1);
+                            if (common > 1) {
+                                let remainder = {};
+                                for(let k in poly) remainder[k] = poly[k] / common;
+                                return {
+                                    type: 'Mul', left: { type: 'FlatPoly', poly: {0: common}, id: uid() },
+                                    right: { type: 'Parens', inner: { type: 'FlatPoly', poly: remainder, id: uid() }, id: uid() },
+                                    implicit: true, id: uid()
+                                };
+                            }
+                        }
+                    } catch(e) {}
+                    return n;
+                }
+                return { ...node, left: factorizeNode(node.left), right: factorizeNode(node.right) };
+            }
+
             if (action === 'DISTRIBUTE') {
                 let isRightParen = node.right.type === 'Parens' && node.right.inner.type === 'Expr';
                 let isLeftParen = node.left.type === 'Parens' && node.left.inner.type === 'Expr';
@@ -598,14 +654,12 @@ window.executeAction = function(id, action) {
         if (changed) {
             let hasCancels = hasCancelledNodes(lClone) || hasCancelledNodes(rClone);
 
-            // 1. Push den nye operasjonen som en ny linje (viser evt røde streker for forkorting)
             state.lines.push({
                 type: 'UNSIMPLIFIED',
                 mathState: { lState: lClone, rState: rClone },
                 pastAction: actionLabel
             });
 
-            // 2. Hvis vi nettopp forkortet, lag umiddelbart én linje til hvor de røde faktorene er borte
             if (hasCancels) {
                 let lClean = cloneASTAndRenewIDs(lClone);
                 let rClean = cloneASTAndRenewIDs(rClone);
@@ -668,9 +722,10 @@ function renderFlatPoly(poly) {
 }
 
 function renderAST(node) {
-    let wrap = (inner) => `<span class="interactive-node ${state.cancelSelection && state.cancelSelection.includes(node.id) ? 'manual-selected' : ''}" onclick="openNodeMenu(event, '${node.id}')" oncontextmenu="openNodeMenu(event, '${node.id}')" title="Klikk for handlinger">${inner}</span>`;
+    let isSelected = state.cancelSelection && state.cancelSelection.includes(node.id);
+    let wrap = (inner) => `<span class="interactive-node ${isSelected ? 'manual-selected' : ''}" onclick="openNodeMenu(event, '${node.id}')" oncontextmenu="openNodeMenu(event, '${node.id}')" title="Klikk for handlinger">${inner}</span>`;
     
-    // Nå wrappes FlatPoly også slik at tall er individuelt klikkbare!
+    // Pakker inn FlatPoly slik at de kan interageres med separat!
     if (node.type === 'FlatPoly') return wrap(renderFlatPoly(node.poly));
     
     if (node.type === 'Cancelled') return `<span class="cancelled">${renderAST(node.inner)}</span>`;
@@ -1004,7 +1059,6 @@ window.onload = () => {
         }
     };
     
-    // NYTT: Manuell Forkortning Toggle-Knapp
     const manualBtn = document.createElement('button');
     manualBtn.id = 'btn-toggle-manual';
     manualBtn.textContent = '✂ Manuell forkortning';
@@ -1024,12 +1078,11 @@ window.onload = () => {
         controlGroup.appendChild(manualBtn);
     }
 
-    // NYTT: Panel for Manuell Forkortning
     const manualPanel = document.createElement('div');
     manualPanel.id = 'manual-cancel-panel';
     manualPanel.className = 'hidden';
     manualPanel.innerHTML = `
-        <span style="color:red; font-weight:bold;">✂ Strykemodus:</span> Klikk på de faktorene du vil forkorte bort.
+        <span style="color:red; font-weight:bold;">✂ Strykemodus:</span> Klikk på faktorene for å stryke dem mot hverandre.
         <button id="btn-verify-cancel" class="btn-small">Sjekk forkortning</button>
         <button id="btn-abort-cancel" class="btn-small" style="background-color:#dc3545;">Avbryt</button>
     `;
@@ -1042,10 +1095,10 @@ window.onload = () => {
         renderWorkspace();
     };
 
-    // Matematisk verifisering av forkortingen!
+    // EKTE MATEMATISK VALIDERING AV STRYKING
     document.getElementById('btn-verify-cancel').onclick = () => {
         if (state.cancelSelection.length === 0) {
-            alert("Du har ikke strøket noen faktorer ennå.");
+            alert("Du har ikke valgt noen ledd å forkorte bort ennå.");
             return;
         }
 
@@ -1053,7 +1106,16 @@ window.onload = () => {
         let astOldL = cloneASTAndRenewIDs(lastLine.mathState.lState);
         let astOldR = cloneASTAndRenewIDs(lastLine.mathState.rState);
 
-        // Funksjon for å erstatte de overstrøkne valgene med '1' i utregningen
+        function checkHasCancels(node, selection) {
+            if (!node) return false;
+            if (selection.includes(node.id)) return true;
+            if (node.elements) return node.elements.some(e => checkHasCancels(e.node, selection));
+            return checkHasCancels(node.left, selection) || checkHasCancels(node.right, selection) || checkHasCancels(node.inner, selection);
+        }
+
+        let hasCancelL = checkHasCancels(astOldL, state.cancelSelection);
+        let hasCancelR = checkHasCancels(astOldR, state.cancelSelection);
+
         function replaceStruckWithOne(node) {
             if (!node) return null;
             if (state.cancelSelection.includes(node.id)) return { type: 'FlatPoly', poly: {0:1}, id: uid() };
@@ -1066,54 +1128,76 @@ window.onload = () => {
         let astNewL = replaceStruckWithOne(astOldL);
         let astNewR = replaceStruckWithOne(astOldR);
 
-        try {
-            // Sjekker kryssmultiplikasjon for å garantere matematisk likhet og forhindre ulovlig stryking!
-            let oldFracL = evaluateToFraction(astOldL), newFracL = evaluateToFraction(astNewL);
-            let oldFracR = evaluateToFraction(astOldR), newFracR = evaluateToFraction(astNewR);
-
-            let validL = polyEquals(polyMul(oldFracL.num, newFracL.den), polyMul(newFracL.num, oldFracL.den));
-            let validR = polyEquals(polyMul(oldFracR.num, newFracR.den), polyMul(newFracR.num, oldFracR.den));
-
-            if (validL && validR) {
-                // Forkortningen er gyldig! Lag trinn 1: Røde streker
-                function applyCancelledStatus(node) {
-                    if (!node) return null;
-                    if (state.cancelSelection.includes(node.id)) return { type: 'Cancelled', inner: node, id: uid() };
-                    if (node.type === 'Expr') return { ...node, elements: node.elements.map(e => ({ sign: e.sign, node: applyCancelledStatus(e.node) })) };
-                    if (node.type === 'Mul' || node.type === 'Div' || node.type === 'Pow') return { ...node, left: applyCancelledStatus(node.left), right: applyCancelledStatus(node.right) };
-                    if (node.type === 'Parens' || node.type === 'Sqrt') return { ...node, inner: applyCancelledStatus(node.inner) };
-                    return node;
+        // Validerings-logikk
+        function validateSide(oldAST, newAST, hasCancel) {
+            if (!hasCancel) return { valid: true, factor: null };
+            let oldF = evaluateToFraction(oldAST);
+            let newF = evaluateToFraction(newAST);
+            try {
+                // Polynomdivisjon forteller oss eksakt hvilken matematisk verdi eleven strøk!
+                let topDiv = polyDivAlg(oldF.num, newF.num);
+                let botDiv = polyDivAlg(oldF.den, newF.den);
+                
+                // Er det ingen rest? Og ble telleren og nevneren delt på nøyaktig det samme uttrykket?
+                if (Object.keys(topDiv.r).length === 0 && Object.keys(botDiv.r).length === 0 && polyEquals(topDiv.q, botDiv.q)) {
+                    return { valid: true, factor: topDiv.q };
                 }
+            } catch(e) {}
+            return { valid: false, factor: null };
+        }
 
-                state.lines.push({
-                    type: 'UNSIMPLIFIED',
-                    mathState: { lState: applyCancelledStatus(astOldL), rState: applyCancelledStatus(astOldR) },
-                    pastAction: 'Manuell forkorting'
-                });
+        let resL = validateSide(astOldL, astNewL, hasCancelL);
+        let resR = validateSide(astOldR, astNewR, hasCancelR);
 
-                // Lag trinn 2: Fjern faktorene helt 
-                function globalClean(node) {
-                    if (!node) return null;
-                    if (node.type === 'Expr') return performLocalSimplification({ ...node, elements: node.elements.map(e => ({ sign: e.sign, node: globalClean(e.node) })) });
-                    if (node.type === 'Mul' || node.type === 'Div' || node.type === 'Pow') return performLocalSimplification({ ...node, left: globalClean(node.left), right: globalClean(node.right) });
-                    if (node.type === 'Parens' || node.type === 'Sqrt') return performLocalSimplification({ ...node, inner: globalClean(node.inner) });
-                    return performLocalSimplification(node);
-                }
+        if (resL.valid && resR.valid) {
+            let factorStrL = (hasCancelL && resL.factor) ? polyToText(resL.factor) : "";
+            let factorStrR = (hasCancelR && resR.factor) ? polyToText(resR.factor) : "";
+            
+            let msg = "🎉 Helt riktig! Gyldig forkortning.";
+            if (factorStrL && factorStrL !== '1') msg += `\nDu forkortet venstre side med faktoren: ${factorStrL}`;
+            if (factorStrR && factorStrR !== '1') msg += `\nDu forkortet høyre side med faktoren: ${factorStrR}`;
+            
+            alert(msg);
 
-                state.lines.push({
-                    type: 'READY',
-                    mathState: { lState: globalClean(astNewL), rState: globalClean(astNewR) },
-                    pastAction: 'Ferdig forkortet'
-                });
-
-                state.manualCancelMode = false;
-                state.cancelSelection = [];
-                document.getElementById('manual-cancel-panel').classList.add('hidden');
-                renderWorkspace();
-            } else {
-                alert("Ugyldig forkortning!\n\nHusk: Du kan kun stryke felles faktorer som er ganget sammen. Det er ikke lov å stryke ut enkeltledd i et pluss/minus-stykke (f.eks inne i en parentes). \nSjekk også at du har strøket nøyaktig like mye over og under brøkstreken.");
+            // Lag trinn 1: Røde streker
+            function applyCancelledStatus(node) {
+                if (!node) return null;
+                if (state.cancelSelection.includes(node.id)) return { type: 'Cancelled', inner: node, id: uid() };
+                if (node.type === 'Expr') return { ...node, elements: node.elements.map(e => ({ sign: e.sign, node: applyCancelledStatus(e.node) })) };
+                if (node.type === 'Mul' || node.type === 'Div' || node.type === 'Pow') return { ...node, left: applyCancelledStatus(node.left), right: applyCancelledStatus(node.right) };
+                if (node.type === 'Parens' || node.type === 'Sqrt') return { ...node, inner: applyCancelledStatus(node.inner) };
+                return node;
             }
-        } catch(e) { alert("Feil under sjekk av forkortning."); }
+
+            state.lines.push({
+                type: 'UNSIMPLIFIED',
+                mathState: { lState: applyCancelledStatus(astOldL), rState: applyCancelledStatus(astOldR) },
+                pastAction: 'Manuell forkorting'
+            });
+
+            // Lag trinn 2: Fjern faktorene helt 
+            function globalClean(node) {
+                if (!node) return null;
+                if (node.type === 'Expr') return performLocalSimplification({ ...node, elements: node.elements.map(e => ({ sign: e.sign, node: globalClean(e.node) })) });
+                if (node.type === 'Mul' || node.type === 'Div' || node.type === 'Pow') return performLocalSimplification({ ...node, left: globalClean(node.left), right: globalClean(node.right) });
+                if (node.type === 'Parens' || node.type === 'Sqrt') return performLocalSimplification({ ...node, inner: globalClean(node.inner) });
+                return performLocalSimplification(node);
+            }
+
+            state.lines.push({
+                type: 'READY',
+                mathState: { lState: globalClean(astNewL), rState: globalClean(astNewR) },
+                pastAction: 'Ferdig forkortet'
+            });
+
+            state.manualCancelMode = false;
+            state.cancelSelection = [];
+            document.getElementById('manual-cancel-panel').classList.add('hidden');
+            renderWorkspace();
+            
+        } else {
+            alert("❌ Ugyldig forkortning!\n\nHusk:\n1. Du må stryke faktorer som er helt like oppe og nede i brøken.\n2. Du kan IKKE stryke enkeltledd som hører til i et pluss/minus-stykke (for eksempel inne i en parentes).\n\nTips: Har du husket å faktorisere teller og nevner før du begynner å stryke?");
+        }
     };
 
     const eq = examples[0];
