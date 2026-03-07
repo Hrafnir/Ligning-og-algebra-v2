@@ -474,3 +474,26 @@ sup {
     background: var(--accent-color);
     color: white;
 }
+
+/* --- Slett Linje-knapp (Krysset) --- */
+.delete-line-btn {
+    background: none;
+    border: none;
+    color: #dc3545;
+    font-size: 16px;
+    cursor: pointer;
+    opacity: 0.3; /* Ganske usynlig inntil man holder musen over */
+    transition: opacity 0.2s, transform 0.1s;
+    padding: 0 5px;
+    margin-left: 5px;
+}
+
+.delete-line-btn:hover {
+    opacity: 1;
+    transform: scale(1.2);
+}
+
+/* Krysset skjules automatisk når man trykker på "Lagre bilde" */
+#workspace-container.export-mode .delete-line-btn {
+    display: none !important;
+}
