@@ -1,4 +1,4 @@
-/* Version: #27 - Brøkbeskyttelse og oppdatert løsnings-sjekk */
+/* Version: #28 - Synlig distribusjons-multiplikasjon og "Trekk sammen"-knapp */
 
 const examples =[
     { label: "2(x + 3) = 14", left: "2(x + 3)", right: "14", mode: "equation", group: "Ligninger (Parenteser)" },
@@ -10,7 +10,7 @@ const examples =[
     { label: "x^2 + 4x + 4", left: "x^2 + 4x + 4", right: "0", mode: "expression", group: "Algebra (Forenkle & Faktorisere)" },
     { label: "x^2 - 25", left: "x^2 - 25", right: "0", mode: "expression", group: "Algebra (Forenkle & Faktorisere)" },
     { label: "(x^2 - 9) / (x - 3)", left: "(x^2 - 9) / (x - 3)", right: "0", mode: "expression", group: "Algebra (Forenkle & Faktorisere)" },
-    { label: "256 / 64 (Fra bildet)", left: "256 / 64", right: "0", mode: "expression", group: "Algebra (Forenkle & Faktorisere)" },
+    { label: "256 / 64", left: "256 / 64", right: "0", mode: "expression", group: "Algebra (Forenkle & Faktorisere)" },
     { label: "10x = 33 (Svar blir brøk)", left: "10x", right: "33", mode: "equation", group: "Ligninger (Lineære)" }
 ];
 
@@ -307,13 +307,11 @@ function evaluateToFraction(node) {
     return { num: {0:0}, den: {0:1} };
 }
 
-// NYTT: Stopper programmet fra å regne brøker (som 64/3) om til desimaltall
 function evaluateToPoly(node) {
     let frac = evaluateToFraction(node);
     let div = polyDivAlg(frac.num, frac.den);
     if (Object.keys(div.r).length === 0) {
         let denKeys = Object.keys(frac.den);
-        // Hvis nevneren er et rent tall, sjekk at den deler opp alt i telleren helt uten rest
         if (denKeys.length === 1 && denKeys[0] === '0') {
             let dVal = frac.den['0'];
             if (Math.abs(dVal) !== 1) {
@@ -418,7 +416,7 @@ function tryCancelFraction(divNode) {
     
     if (!cancelledAny) {
         try { return { type: 'FlatPoly', poly: evaluateToPoly(divNode), id: uid() }; } 
-        catch(e) { return divNode; } // Forblir brøk hvis den ikke går opp!
+        catch(e) { return divNode; } 
     }
     
     function rebuildWithCancelled(factors) {
@@ -529,17 +527,6 @@ window.openNodeMenu = function(e, id) {
     menu.classList.remove('hidden');
 };
 
-function isPureNumber(n) {
-    if (!n || n.type !== 'FlatPoly') return false;
-    let keys = Object.keys(n.poly);
-    return keys.length === 0 || (keys.length === 1 && keys[0] === '0');
-}
-
-function createSmartMul(leftNode, rightNode, originalImplicit) {
-    let needsExplicit = isPureNumber(leftNode) && isPureNumber(rightNode);
-    return { type: 'Mul', left: leftNode, right: rightNode, implicit: needsExplicit ? false : originalImplicit, id: uid() };
-}
-
 function performLocalSimplification(node) {
     if (node.type === 'Expr' || node.type === 'FlatPoly') {
         try {
@@ -556,8 +543,9 @@ function performLocalSimplification(node) {
     if (node.type === 'Mul') {
         let isRightParen = node.right.type === 'Parens' && node.right.inner.type === 'Expr';
         let isLeftParen = node.left.type === 'Parens' && node.left.inner.type === 'Expr';
-        if (isRightParen) return { type: 'Expr', elements: node.right.inner.elements.map(e => ({ sign: e.sign, node: createSmartMul(node.left, e.node, node.implicit) })), id: uid() };
-        if (isLeftParen) return { type: 'Expr', elements: node.left.inner.elements.map(e => ({ sign: e.sign, node: createSmartMul(e.node, node.right, node.implicit) })), id: uid() };
+        // Fiks: Bruker deepClone og setter alltid implicit: false under distribusjon (slik at vi tvinger frem prikken).
+        if (isRightParen) return { type: 'Expr', elements: node.right.inner.elements.map(e => ({ sign: e.sign, node: { type: 'Mul', left: deepClone(node.left), right: deepClone(e.node), implicit: false, id: uid() } })), id: uid() };
+        if (isLeftParen) return { type: 'Expr', elements: node.left.inner.elements.map(e => ({ sign: e.sign, node: { type: 'Mul', left: deepClone(e.node), right: deepClone(node.right), implicit: false, id: uid() } })), id: uid() };
         try { return { type: 'FlatPoly', poly: evaluateToPoly(node), id: uid() }; } catch(e) {}
     }
     if (node.type === 'Div') return tryCancelFraction(node);
@@ -589,7 +577,6 @@ window.executeAction = function(id, action) {
             changed = true; 
             if (action === 'SIMPLIFY') return performLocalSimplification(node);
             if (action === 'EVALUATE') {
-                // NYTT: Hvis vi evaluerer en brøk som ikke går opp, forblir det en ryddig brøk!
                 try {
                     return { type: 'FlatPoly', poly: evaluateToPoly(node), id: uid() };
                 } catch(e) {
@@ -647,8 +634,9 @@ window.executeAction = function(id, action) {
             if (action === 'DISTRIBUTE') {
                 let isRightParen = node.right.type === 'Parens' && node.right.inner.type === 'Expr';
                 let isLeftParen = node.left.type === 'Parens' && node.left.inner.type === 'Expr';
-                if (isRightParen) return { type: 'Expr', elements: node.right.inner.elements.map(e => ({ sign: e.sign, node: createSmartMul(node.left, e.node, node.implicit) })), id: uid() };
-                if (isLeftParen) return { type: 'Expr', elements: node.left.inner.elements.map(e => ({ sign: e.sign, node: createSmartMul(e.node, node.right, node.implicit) })), id: uid() };
+                // NYTT: Tvinger fram implict: false slik at &middot; (prikken) alltid vises når man løser opp!
+                if (isRightParen) return { type: 'Expr', elements: node.right.inner.elements.map(e => ({ sign: e.sign, node: { type: 'Mul', left: deepClone(node.left), right: deepClone(e.node), implicit: false, id: uid() } })), id: uid() };
+                if (isLeftParen) return { type: 'Expr', elements: node.left.inner.elements.map(e => ({ sign: e.sign, node: { type: 'Mul', left: deepClone(e.node), right: deepClone(node.right), implicit: false, id: uid() } })), id: uid() };
             }
         }
         if (node.type === 'Expr') return { ...node, elements: node.elements.map(e => ({ sign: e.sign, node: traverseAndReplace(e.node) })) };
@@ -764,7 +752,6 @@ function renderAST(node) {
 
 // === SEKSJON: Spill-logikk & Operasjoner ===
 
-// NYTT: Støtter at man kan ha løsninger som er brøker (f.eks x = 64/3)
 function isSolved(lNode, rNode) {
     if (state.currentMode === 'expression') return false; 
     let lFrac, rFrac;
@@ -921,6 +908,7 @@ function renderWorkspace() {
         } else if (isLastRow && state.currentMode === 'equation') {
             if (state.currentStatus === 'WAITING_FOR_ACTION' || state.currentStatus === 'SOLVED') {
                 if (state.currentStatus !== 'SOLVED') {
+                    // NYTT: Trekk Sammen-knappen lagt til i det aktive panelet for å spare tid
                     actionDiv.innerHTML = `
                         <div class="active-action-panel">
                             <select id="op-select">
@@ -932,6 +920,7 @@ function renderWorkspace() {
                             </select>
                             <input type="text" id="action-input" placeholder="x" autocomplete="off">
                             <button id="btn-apply-action" class="btn-small">Utfør</button>
+                            <button id="btn-auto-simplify-row" class="btn-small" style="background-color: var(--warning-color); color: #333; margin-left: 5px;">Trekk sammen</button>
                         </div>
                     `;
                     setTimeout(() => bindActionEvents(), 0);
@@ -970,6 +959,7 @@ function bindActionEvents() {
     const btn = document.getElementById('btn-apply-action');
     const input = document.getElementById('action-input');
     const select = document.getElementById('op-select');
+    const btnAutoSimplifyRow = document.getElementById('btn-auto-simplify-row');
     
     if(btn && input && select) {
         select.addEventListener('change', () => {
@@ -979,6 +969,39 @@ function bindActionEvents() {
         btn.addEventListener('click', () => handleActionSubmit(select.value, input.value));
         input.addEventListener('keypress', (e) => { if (e.key === 'Enter') btn.click(); });
         input.focus();
+    }
+    
+    // Logikk for den nye "Trekk sammen" knappen
+    if (btnAutoSimplifyRow) {
+        btnAutoSimplifyRow.addEventListener('click', () => {
+            let lastLine = state.lines[state.lines.length - 1];
+            
+            function simplifyNode(node) {
+                try {
+                    return { type: 'FlatPoly', poly: evaluateToPoly(node), id: uid() };
+                } catch (e) {
+                    let frac = evaluateToFraction(node);
+                    return { type: 'Div', left: { type: 'FlatPoly', poly: frac.num, id: uid() }, right: { type: 'FlatPoly', poly: frac.den, id: uid() }, id: uid() };
+                }
+            }
+            
+            let newL = simplifyNode(lastLine.mathState.lState);
+            let newR = simplifyNode(lastLine.mathState.rState);
+
+            lastLine.pastAction = 'Trekk sammen';
+            
+            state.lines.push({
+                type: 'READY',
+                mathState: { lState: newL, rState: newR },
+                pastAction: null
+            });
+            
+            if (isSolved(newL, newR)) {
+                state.currentStatus = 'SOLVED';
+                document.getElementById('success-message').classList.remove('hidden');
+            }
+            renderWorkspace();
+        });
     }
 }
 
