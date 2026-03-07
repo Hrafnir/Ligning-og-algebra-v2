@@ -1,18 +1,13 @@
-/* Version: #20 - Ny UI, kontekstmeny, faktorisering og bugfix for parenteser */
+/* Version: #21 - Bugfix for distribusjon (23-feilen) og Angre-knapp */
 
 // === SEKSJON: Data & Eksempler ===
 const examples =[
-    // Ligninger - Enkle
     { label: "2(x + 3) = 14", left: "2(x + 3)", right: "14", mode: "equation", group: "Ligninger (Parenteser)" },
     { label: "5x + 10 = 25", left: "5x + 10", right: "25", mode: "equation", group: "Ligninger (Lineære)" },
     { label: "3x - 7 = 2x + 5", left: "3x - 7", right: "2x + 5", mode: "equation", group: "Ligninger (Lineære)" },
-    
-    // Ligninger - Brøk & Pythagoras
     { label: "12/x = 4", left: "12/x", right: "4", mode: "equation", group: "Ligninger (Brøk & Potens)" },
     { label: "(x - 2)/(x^2 - 4x + 4) = 12", left: "(x - 2)/(x^2 - 4x + 4)", right: "12", mode: "equation", group: "Ligninger (Brøk & Potens)" },
     { label: "x^2 + 6^2 = 10^2", left: "x^2 + 6^2", right: "10^2", mode: "equation", group: "Ligninger (Brøk & Potens)" },
-    
-    // Algebra - Forenkling & Faktorisering
     { label: "x^2 + 4x + 4", left: "x^2 + 4x + 4", right: "0", mode: "expression", group: "Algebra (Forenkle & Faktorisere)" },
     { label: "x^2 - 25", left: "x^2 - 25", right: "0", mode: "expression", group: "Algebra (Forenkle & Faktorisere)" },
     { label: "(x^2 - 9) / (x - 3)", left: "(x^2 - 9) / (x - 3)", right: "0", mode: "expression", group: "Algebra (Forenkle & Faktorisere)" }
@@ -129,7 +124,6 @@ function polyDivAlg(n, d) {
     return { q: cleanState(q), r: cleanState(r) };
 }
 
-// NYTT: Primtallsfaktorisering
 function getPrimeFactors(n) {
     let factors = [];
     let d = 2;
@@ -400,9 +394,8 @@ function tryCancelFraction(divNode) {
     return { type: 'Div', left: rebuildWithCancelled(topFactors), right: rebuildWithCancelled(botFactors), id: uid() };
 }
 
-// === SEKSJON: Kontekstmeny & Interaktivitet (NYTT SYSTEM) ===
+// === SEKSJON: Kontekstmeny & Interaktivitet ===
 
-// Finner en spesifikk node i AST basert på ID
 function findNodeById(node, id) {
     if (!node) return null;
     if (node.id === id) return node;
@@ -421,7 +414,6 @@ function findNodeById(node, id) {
     return null;
 }
 
-// Åpner kontekstmenyen når man klikker eller høyreklikker
 window.openNodeMenu = function(e, id) {
     e.preventDefault();
     e.stopPropagation();
@@ -437,7 +429,6 @@ window.openNodeMenu = function(e, id) {
     let poly = null;
     try { poly = evaluateToPoly(node); } catch(err) {}
 
-    // 1. Kan tallet faktoriseres?
     if (poly && Object.keys(poly).length === 1 && poly['0'] > 1 && Number.isInteger(poly['0'])) {
         let factors = getPrimeFactors(poly['0']);
         if (factors.length > 1) { 
@@ -445,12 +436,10 @@ window.openNodeMenu = function(e, id) {
         }
     }
 
-    // 2. Er det et gangestykke med parentes?
     if (node.type === 'Mul' && (node.left.type === 'Parens' || node.right.type === 'Parens')) {
         options.push({ label: 'Multipliser inn (Løs opp parentes)', action: 'DISTRIBUTE' });
     }
 
-    // 3. Generelle handlinger
     if (node.type === 'Expr' && node.elements.length > 1) {
         options.push({ label: 'Trekk sammen uttrykk', action: 'EVALUATE' });
     } else if (node.type === 'Div') {
@@ -476,6 +465,19 @@ window.openNodeMenu = function(e, id) {
     menu.classList.remove('hidden');
 };
 
+// NY Hjelpefunksjon for å unngå 23-feilen. 
+// Sjekker om begge sider av gangetegnet er rene tall, og tvinger i så fall frem prikken.
+function isPureNumber(n) {
+    if (!n || n.type !== 'FlatPoly') return false;
+    let keys = Object.keys(n.poly);
+    return keys.length === 0 || (keys.length === 1 && keys[0] === '0');
+}
+
+function createSmartMul(leftNode, rightNode, originalImplicit) {
+    let needsExplicit = isPureNumber(leftNode) && isPureNumber(rightNode);
+    return { type: 'Mul', left: leftNode, right: rightNode, implicit: needsExplicit ? false : originalImplicit, id: uid() };
+}
+
 function performLocalSimplification(node) {
     if (node.type === 'Expr' || node.type === 'FlatPoly') {
         try {
@@ -492,13 +494,15 @@ function performLocalSimplification(node) {
     if (node.type === 'Mul') {
         let isRightParen = node.right.type === 'Parens' && node.right.inner.type === 'Expr';
         let isLeftParen = node.left.type === 'Parens' && node.left.inner.type === 'Expr';
-        if (isRightParen) return { type: 'Expr', elements: node.right.inner.elements.map(e => ({ sign: e.sign, node: { type: 'Mul', left: node.left, right: e.node, implicit: node.implicit, id: uid() } })), id: uid() };
-        if (isLeftParen) return { type: 'Expr', elements: node.left.inner.elements.map(e => ({ sign: e.sign, node: { type: 'Mul', left: e.node, right: node.right, implicit: node.implicit, id: uid() } })), id: uid() };
+        
+        // Her bruker vi createSmartMul i stedet for å blindt kopiere usynlig gangetegn
+        if (isRightParen) return { type: 'Expr', elements: node.right.inner.elements.map(e => ({ sign: e.sign, node: createSmartMul(node.left, e.node, node.implicit) })), id: uid() };
+        if (isLeftParen) return { type: 'Expr', elements: node.left.inner.elements.map(e => ({ sign: e.sign, node: createSmartMul(e.node, node.right, node.implicit) })), id: uid() };
+        
         try { return { type: 'FlatPoly', poly: evaluateToPoly(node), id: uid() }; } catch(e) {}
     }
     if (node.type === 'Div') return tryCancelFraction(node);
     
-    // Bug-fiks: Tillater ikke parentesen å strippe seg selv med mindre innholdet er ferdig forenklet til ett ledd
     if (node.type === 'Parens') {
         let simP = performLocalSimplification(node.inner);
         if (simP.type === 'FlatPoly' || (simP.type === 'Expr' && simP.elements.length === 1)) return simP;
@@ -525,8 +529,10 @@ window.executeAction = function(id, action) {
             if (action === 'DISTRIBUTE') {
                 let isRightParen = node.right.type === 'Parens' && node.right.inner.type === 'Expr';
                 let isLeftParen = node.left.type === 'Parens' && node.left.inner.type === 'Expr';
-                if (isRightParen) return { type: 'Expr', elements: node.right.inner.elements.map(e => ({ sign: e.sign, node: { type: 'Mul', left: node.left, right: e.node, implicit: node.implicit, id: uid() } })), id: uid() };
-                if (isLeftParen) return { type: 'Expr', elements: node.left.inner.elements.map(e => ({ sign: e.sign, node: { type: 'Mul', left: e.node, right: node.right, implicit: node.implicit, id: uid() } })), id: uid() };
+                
+                // Samme fiks her! Forhindrer at 2 og 3 smelter sammen til 23.
+                if (isRightParen) return { type: 'Expr', elements: node.right.inner.elements.map(e => ({ sign: e.sign, node: createSmartMul(node.left, e.node, node.implicit) })), id: uid() };
+                if (isLeftParen) return { type: 'Expr', elements: node.left.inner.elements.map(e => ({ sign: e.sign, node: createSmartMul(e.node, node.right, node.implicit) })), id: uid() };
             }
         }
         if (node.type === 'Expr') return { ...node, elements: node.elements.map(e => ({ sign: e.sign, node: traverseAndReplace(e.node) })) };
@@ -584,7 +590,6 @@ function renderFlatPoly(poly) {
 function renderAST(node) {
     if (node.type === 'FlatPoly') return renderFlatPoly(node.poly);
     
-    // NYTT: Både vanlig klikk og høyreklikk åpner nå kontekstmenyen for elementet
     let wrap = (inner) => `<span class="interactive-node" onclick="openNodeMenu(event, '${node.id}')" oncontextmenu="openNodeMenu(event, '${node.id}')" title="Klikk for handlinger">${inner}</span>`;
     
     if (node.type === 'Cancelled') return `<span class="cancelled">${renderAST(node.inner)}</span>`;
@@ -876,18 +881,38 @@ document.getElementById('btn-export-png').addEventListener('click', () => {
 window.onload = () => {
     initExamples();
     
-    // NYTT: Setter opp kontekstmenyen i bakgrunnen
     const menu = document.createElement('div');
     menu.id = 'math-context-menu';
     menu.className = 'hidden';
     document.body.appendChild(menu);
     
-    // Klikk utenfor menyen lukker den
     document.addEventListener('click', (e) => {
         if (!e.target.closest('#math-context-menu')) {
             menu.classList.add('hidden');
         }
     });
+
+    // NYTT: Dynamisk opprettelse av "Angre"-knapp
+    const undoBtn = document.createElement('button');
+    undoBtn.id = 'btn-undo';
+    undoBtn.textContent = '↩ Angre siste trekk';
+    undoBtn.style.backgroundColor = '#ffc107'; 
+    undoBtn.style.color = '#333';
+    undoBtn.style.marginLeft = '10px';
+    undoBtn.onclick = () => {
+        if (state.lines.length > 1) {
+            state.lines.pop(); 
+            state.currentStatus = 'WAITING_FOR_ACTION';
+            document.getElementById('success-message').classList.add('hidden');
+            renderWorkspace();
+        }
+    };
+    
+    // Legger angre-knappen inn i kontrollpanelet
+    const controlGroup = document.querySelector('.control-group');
+    if (controlGroup) {
+        controlGroup.appendChild(undoBtn);
+    }
 
     const eq = examples[0];
     startEquation(eq.left, eq.right, eq.mode);
