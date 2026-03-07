@@ -497,3 +497,45 @@ sup {
 #workspace-container.export-mode .delete-line-btn {
     display: none !important;
 }
+
+/* --- Eksport-innstillinger --- */
+.export-settings {
+    width: 100%;
+    max-width: 900px;
+    background: var(--paper-color);
+    padding: 15px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    margin-bottom: 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    box-sizing: border-box;
+}
+
+.export-settings h3 {
+    margin: 0;
+    font-size: 18px;
+    color: var(--text-color);
+}
+
+.export-settings input, .export-settings textarea {
+    width: 100%;
+    padding: 10px;
+    font-size: 16px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-family: inherit;
+    box-sizing: border-box;
+}
+
+.export-settings textarea {
+    resize: vertical;
+}
+
+/* Sørger for at den gamle containeren nederst ikke roter til oppsettet */
+.export-container {
+    width: 100%;
+    text-align: center;
+    margin-top: 10px;
+}
