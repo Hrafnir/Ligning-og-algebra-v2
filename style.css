@@ -1,4 +1,4 @@
-/* Version: #17 - Oppdatert med eksport-modus */
+/* Version: #18 - Oppdatert med meny og rød utheving */
 :root {
     --bg-color: #f4f7f6;
     --paper-color: #ffffff;
@@ -35,7 +35,6 @@ header {
     margin-bottom: 20px;
 }
 
-/* --- Knapper for Toppmeny og Eksport --- */
 .btn-export {
     background-color: var(--export-color);
     color: white;
@@ -50,15 +49,9 @@ header {
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-.btn-export:hover {
-    background-color: var(--export-hover);
-}
+.btn-export:hover { background-color: var(--export-hover); }
+.btn-export:active { transform: translateY(1px); }
 
-.btn-export:active {
-    transform: translateY(1px);
-}
-
-/* --- Kontrollpanel --- */
 .controls {
     background: var(--paper-color);
     padding: 20px;
@@ -109,11 +102,8 @@ header {
     font-weight: bold;
 }
 
-.controls button:not(.btn-export):hover {
-    background-color: var(--accent-hover);
-}
+.controls button:not(.btn-export):hover { background-color: var(--accent-hover); }
 
-/* --- Arbeidsflate (Ligningsløsning / Eksport-område) --- */
 #workspace-container {
     width: 100%;
     max-width: 900px;
@@ -129,7 +119,6 @@ header {
     overflow-y: auto;
 }
 
-/* Normal Grid (Ligningsmodus) */
 .math-row {
     display: grid;
     grid-template-columns: 1fr 40px 1fr 220px;
@@ -143,25 +132,13 @@ header {
     min-height: 60px;
 }
 
-/* Tilpasset Grid (Uttrykksmodus / Ren Algebra) */
 .math-row.expression-mode {
     grid-template-columns: 1fr 220px;
     justify-content: center;
 }
-
-.math-row.expression-mode .left-side {
-    justify-content: center;
-    padding-right: 0;
-}
-
-.math-row.expression-mode .equals,
-.math-row.expression-mode .right-side {
-    display: none;
-}
-
-.math-row:hover {
-    border-bottom: 1px dashed #eee;
-}
+.math-row.expression-mode .left-side { justify-content: center; padding-right: 0; }
+.math-row.expression-mode .equals, .math-row.expression-mode .right-side { display: none; }
+.math-row:hover { border-bottom: 1px dashed #eee; }
 
 .left-side {
     text-align: right;
@@ -172,12 +149,7 @@ header {
     flex-wrap: wrap;
     gap: 5px;
 }
-
-.equals {
-    text-align: center;
-    font-weight: bold;
-}
-
+.equals { text-align: center; font-weight: bold; }
 .right-side {
     text-align: left;
     padding-left: 10px;
@@ -188,12 +160,8 @@ header {
     gap: 5px;
 }
 
-.unsimplified {
-    color: #666;
-    font-style: italic;
-}
+.unsimplified { color: #666; font-style: italic; }
 
-/* --- Matematisk Formatering (Brøk og Potens) --- */
 .math-term {
     display: inline-flex;
     align-items: center;
@@ -208,202 +176,92 @@ header {
     margin: 0 5px;
     font-size: 0.9em;
 }
+.numerator { border-bottom: 2px solid var(--text-color); padding: 0 5px; line-height: 1.2; }
+.denominator { padding: 0 5px; line-height: 1.2; }
+.unsimplified .numerator { border-bottom-color: #666; }
+sup { font-size: 0.6em; position: relative; top: -0.6em; margin-left: 2px; }
 
-.numerator {
-    border-bottom: 2px solid var(--text-color);
-    padding: 0 5px;
-    line-height: 1.2;
-}
-
-.denominator {
-    padding: 0 5px;
-    line-height: 1.2;
-}
-
-.unsimplified .numerator {
-    border-bottom-color: #666;
-}
-
-sup {
-    font-size: 0.6em;
-    position: relative;
-    top: -0.6em;
-    margin-left: 2px;
-}
-
-/* --- Interaktive (klikkbare) AST-Noder --- */
+/* --- Interaktive Noder med tynn rød linje --- */
 .interactive-node {
     cursor: pointer;
     border-radius: 4px;
     padding: 2px 4px;
     margin: 0 2px;
-    border-bottom: 1px dotted #999;
-    transition: background-color 0.2s, transform 0.1s, box-shadow 0.2s;
+    border: 1px solid transparent; /* Beholder layout-bredden */
+    transition: background-color 0.2s, border-color 0.2s;
     display: inline-flex;
     align-items: center;
 }
 
 .interactive-node:hover {
-    background-color: var(--interactive-hover-bg);
-    border-bottom: 1px solid var(--accent-color);
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    transform: translateY(-1px);
+    background-color: rgba(220, 53, 69, 0.05);
+    border-color: rgba(220, 53, 69, 0.6); /* Den tynne røde linjen du ba om */
 }
 
-.interactive-node:active {
-    transform: translateY(1px);
-    box-shadow: none;
-}
-
-/* Visuell effekt for strøkne/forkortede brøkdeler */
-.cancelled {
-    position: relative;
-    color: #999;
-    pointer-events: none;
-}
-
-.cancelled::after {
-    content: '';
+/* --- Kontekstmeny for valg --- */
+#math-context-menu {
     position: absolute;
-    top: 50%;
-    left: -10%;
-    width: 120%;
-    height: 3px;
-    background-color: var(--cancel-color);
-    transform: translateY(-50%) rotate(-15deg);
-    border-radius: 2px;
-    opacity: 0.8;
-}
-
-/* --- Handlingsboks (Høyre kolonne) --- */
-.action-cell {
-    text-align: left;
-    padding-left: 20px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.action-box {
-    border: 2px solid #555;
-    padding: 5px 15px;
-    border-radius: 4px;
-    font-size: 20px;
-    color: #555;
-    display: inline-flex;
-    align-items: center;
-    background-color: #fafafa;
-}
-
-.action-box::before {
-    content: "| ";
-    color: #aaa;
-    margin-right: 5px;
-}
-
-.active-action-panel {
-    display: flex;
-    gap: 5px;
-    background: var(--box-bg);
-    padding: 5px;
+    background: var(--paper-color);
+    border: 1px solid var(--border-color);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
     border-radius: 6px;
-    align-items: center;
-}
-
-.active-action-panel select {
-    font-size: 18px;
-    padding: 5px;
-    width: 60px;
-}
-
-.active-action-panel input {
-    font-size: 18px;
-    padding: 5px;
-    width: 80px;
-    text-align: center;
-}
-
-/* --- Knapper --- */
-.btn-small {
-    background-color: var(--success-color);
-    color: white;
-    border: none;
-    padding: 6px 12px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 16px;
-    font-weight: bold;
-}
-
-.btn-small:hover { 
-    background-color: var(--success-hover); 
-}
-
-.btn-simplify {
-    background-color: var(--warning-color);
-    color: #333;
-    width: 100%;
-}
-
-.btn-simplify:hover { 
-    background-color: var(--warning-hover); 
-}
-
-/* --- Suksessmelding --- */
-#success-message {
-    margin-top: 30px;
-    padding: 20px;
-    background-color: #d4edda;
-    color: #155724;
-    border: 2px solid #c3e6cb;
-    border-radius: 8px;
-    text-align: center;
-    font-size: 24px;
-    font-weight: bold;
-    animation: fadeIn 0.5s ease-in-out;
-}
-
-.hidden {
-    display: none !important;
-}
-
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(-10px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-/* Responsivitet for mindre skjermer */
-@media (max-width: 768px) {
-    .math-row {
-        grid-template-columns: 1fr 20px 1fr 150px;
-        font-size: 18px;
-    }
-    .math-row.expression-mode {
-        grid-template-columns: 1fr 150px;
-    }
-    .active-action-panel select, .active-action-panel input {
-        font-size: 14px;
-        padding: 4px;
-    }
-}
-
-/* --- NYTT: Eksport-modus (Fjerner unødvendig luft og skjuler UI under bilde-taking) --- */
-#workspace-container.export-mode {
-    min-height: auto; 
-    padding: 15px 30px; 
-    box-shadow: none; 
-    border: 1px solid var(--border-color); 
-}
-
-#workspace-container.export-mode .math-row {
-    min-height: 40px; 
-    margin-bottom: 5px; 
+    z-index: 1000;
     padding: 5px 0;
-    border-bottom: none; 
+    min-width: 180px;
+    font-size: 16px;
+    font-family: 'Segoe UI', sans-serif;
 }
 
+#math-context-menu .menu-item {
+    padding: 10px 15px;
+    cursor: pointer;
+    transition: background 0.2s;
+    color: var(--text-color);
+}
+
+#math-context-menu .menu-item:hover {
+    background: var(--accent-color);
+    color: white;
+}
+
+.cancelled { position: relative; color: #999; pointer-events: none; }
+.cancelled::after {
+    content: ''; position: absolute; top: 50%; left: -10%; width: 120%; height: 3px;
+    background-color: var(--cancel-color); transform: translateY(-50%) rotate(-15deg); border-radius: 2px; opacity: 0.8;
+}
+
+.action-cell { text-align: left; padding-left: 20px; display: flex; align-items: center; gap: 10px; }
+.action-box {
+    border: 2px solid #555; padding: 5px 15px; border-radius: 4px; font-size: 20px; color: #555;
+    display: inline-flex; align-items: center; background-color: #fafafa;
+}
+.action-box::before { content: "| "; color: #aaa; margin-right: 5px; }
+
+.active-action-panel { display: flex; gap: 5px; background: var(--box-bg); padding: 5px; border-radius: 6px; align-items: center; }
+.active-action-panel select { font-size: 18px; padding: 5px; width: 60px; }
+.active-action-panel input { font-size: 18px; padding: 5px; width: 80px; text-align: center; }
+
+.btn-small { background-color: var(--success-color); color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: bold; }
+.btn-small:hover { background-color: var(--success-hover); }
+.btn-simplify { background-color: var(--warning-color); color: #333; width: 100%; }
+.btn-simplify:hover { background-color: var(--warning-hover); }
+
+#success-message {
+    margin-top: 30px; padding: 20px; background-color: #d4edda; color: #155724; border: 2px solid #c3e6cb;
+    border-radius: 8px; text-align: center; font-size: 24px; font-weight: bold; animation: fadeIn 0.5s ease-in-out;
+}
+
+.hidden { display: none !important; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+
+@media (max-width: 768px) {
+    .math-row { grid-template-columns: 1fr 20px 1fr 150px; font-size: 18px; }
+    .math-row.expression-mode { grid-template-columns: 1fr 150px; }
+    .active-action-panel select, .active-action-panel input { font-size: 14px; padding: 4px; }
+}
+
+#workspace-container.export-mode { min-height: auto; padding: 15px 30px; box-shadow: none; border: 1px solid var(--border-color); }
+#workspace-container.export-mode .math-row { min-height: 40px; margin-bottom: 5px; padding: 5px 0; border-bottom: none; }
 #workspace-container.export-mode .active-action-panel,
 #workspace-container.export-mode .btn-simplify,
-#workspace-container.export-mode .action-cell:empty {
-    display: none !important; 
-}
+#workspace-container.export-mode .action-cell:empty { display: none !important; }
