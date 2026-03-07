@@ -1,4 +1,4 @@
-/* Version: #16 - Oppdatert med eksport-modus */
+/* Version: #17 - Oppdatert med eksport-modus */
 :root {
     --bg-color: #f4f7f6;
     --paper-color: #ffffff;
@@ -259,7 +259,7 @@ sup {
 .cancelled {
     position: relative;
     color: #999;
-    pointer-events: none; /* Kan ikke klikkes på nytt etter at den er strøket */
+    pointer-events: none;
 }
 
 .cancelled::after {
