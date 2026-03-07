@@ -1,4 +1,4 @@
-/* Version: #26 - Reparasjon av historikk-logg og menyer for ligninger */
+/* Version: #27 - Brøkbeskyttelse og oppdatert løsnings-sjekk */
 
 const examples =[
     { label: "2(x + 3) = 14", left: "2(x + 3)", right: "14", mode: "equation", group: "Ligninger (Parenteser)" },
@@ -10,7 +10,8 @@ const examples =[
     { label: "x^2 + 4x + 4", left: "x^2 + 4x + 4", right: "0", mode: "expression", group: "Algebra (Forenkle & Faktorisere)" },
     { label: "x^2 - 25", left: "x^2 - 25", right: "0", mode: "expression", group: "Algebra (Forenkle & Faktorisere)" },
     { label: "(x^2 - 9) / (x - 3)", left: "(x^2 - 9) / (x - 3)", right: "0", mode: "expression", group: "Algebra (Forenkle & Faktorisere)" },
-    { label: "256 / 64 (Fra bildet)", left: "256 / 64", right: "0", mode: "expression", group: "Algebra (Forenkle & Faktorisere)" }
+    { label: "256 / 64 (Fra bildet)", left: "256 / 64", right: "0", mode: "expression", group: "Algebra (Forenkle & Faktorisere)" },
+    { label: "10x = 33 (Svar blir brøk)", left: "10x", right: "33", mode: "equation", group: "Ligninger (Lineære)" }
 ];
 
 let state = {
@@ -168,7 +169,6 @@ function polyToText(poly) {
 
 function uid() { return Math.random().toString(36).substr(2, 9); }
 
-// FIKSET: Vi overskriver ikke lenger IDene, da det ødela menysystemet.
 function deepClone(node) {
     if (!node) return null;
     return JSON.parse(JSON.stringify(node));
@@ -262,7 +262,7 @@ function parseSide(sideStr) {
     return parseTokens(tokenize(sideStr));
 }
 
-// === SEKSJON: Evaluering ===
+// === SEKSJON: Evaluering med BRØKBESKYTTELSE ===
 
 function evaluateToFraction(node) {
     if (!node) return { num: {0:0}, den: {0:1} };
@@ -307,10 +307,23 @@ function evaluateToFraction(node) {
     return { num: {0:0}, den: {0:1} };
 }
 
+// NYTT: Stopper programmet fra å regne brøker (som 64/3) om til desimaltall
 function evaluateToPoly(node) {
     let frac = evaluateToFraction(node);
     let div = polyDivAlg(frac.num, frac.den);
-    if (Object.keys(div.r).length === 0) return div.q;
+    if (Object.keys(div.r).length === 0) {
+        let denKeys = Object.keys(frac.den);
+        // Hvis nevneren er et rent tall, sjekk at den deler opp alt i telleren helt uten rest
+        if (denKeys.length === 1 && denKeys[0] === '0') {
+            let dVal = frac.den['0'];
+            if (Math.abs(dVal) !== 1) {
+                for (let k in frac.num) {
+                    if (Math.abs(frac.num[k] % dVal) > 0.0001) throw "Dette er en brøk som ikke går opp flatt.";
+                }
+            }
+        }
+        return div.q;
+    }
     throw "Dette er en brøk som ikke går opp flatt.";
 }
 
@@ -405,7 +418,7 @@ function tryCancelFraction(divNode) {
     
     if (!cancelledAny) {
         try { return { type: 'FlatPoly', poly: evaluateToPoly(divNode), id: uid() }; } 
-        catch(e) { return divNode; }
+        catch(e) { return divNode; } // Forblir brøk hvis den ikke går opp!
     }
     
     function rebuildWithCancelled(factors) {
@@ -575,7 +588,15 @@ window.executeAction = function(id, action) {
         if (node.id === id) { 
             changed = true; 
             if (action === 'SIMPLIFY') return performLocalSimplification(node);
-            if (action === 'EVALUATE') return { type: 'FlatPoly', poly: evaluateToPoly(node), id: uid() };
+            if (action === 'EVALUATE') {
+                // NYTT: Hvis vi evaluerer en brøk som ikke går opp, forblir det en ryddig brøk!
+                try {
+                    return { type: 'FlatPoly', poly: evaluateToPoly(node), id: uid() };
+                } catch(e) {
+                    let frac = evaluateToFraction(node);
+                    return { type: 'Div', left: { type: 'FlatPoly', poly: frac.num, id: uid() }, right: { type: 'FlatPoly', poly: frac.den, id: uid() }, id: uid() };
+                }
+            }
             if (action === 'FACTORIZE_NUM') return buildFactorTree(getPrimeFactors(evaluateToPoly(node)['0']));
             if (action === 'FACTORIZE_POLY') return tryFactorize(evaluateToPoly(node)) || node;
             
@@ -643,13 +664,9 @@ window.executeAction = function(id, action) {
         if (changed) {
             let hasCancels = hasCancelledNodes(lClone) || hasCancelledNodes(rClone);
 
-            // FIKS 1: Legger handlingsteksten til på den FORRIGE linjen, slik at panelet forblir åpent i bunn!
-            if (!lastLine.pastAction) {
-                lastLine.pastAction = actionLabel;
-            }
+            if (!lastLine.pastAction) lastLine.pastAction = actionLabel;
 
             if (hasCancels) {
-                // Trinn 1: Viser de røde strekene
                 state.lines.push({
                     type: 'UNSIMPLIFIED',
                     mathState: { lState: lClone, rState: rClone },
@@ -668,33 +685,26 @@ window.executeAction = function(id, action) {
                     return node;
                 }
                 
-                // Trinn 2: Den rene, nye linjen (Med null, slik at input-feltet returnerer!)
                 state.lines.push({
                     type: 'READY',
                     mathState: { lState: removeCancelsTraverse(lClean), rState: removeCancelsTraverse(rClean) },
                     pastAction: null
                 });
             } else {
-                // Hvis ingen stryking, pumper vi bare den rene linjen
                 state.lines.push({
                     type: 'READY',
                     mathState: { lState: lClone, rState: rClone },
-                    pastAction: null // Dette sikrer at input-feltet vises nederst
+                    pastAction: null
                 });
             }
 
-            // Går tilbake til Action-modus slik at brukeren kan velge selv hva som skal skje videre
             state.currentStatus = 'WAITING_FOR_ACTION';
 
             if (state.currentMode === 'equation') {
-                try {
-                    let topL = evaluateToPoly(state.lines[state.lines.length-1].mathState.lState);
-                    let topR = evaluateToPoly(state.lines[state.lines.length-1].mathState.rState);
-                    if (isSolved(topL, topR)) {
-                        state.currentStatus = 'SOLVED';
-                        document.getElementById('success-message').classList.remove('hidden');
-                    }
-                } catch(ignore) {}
+                if (isSolved(state.lines[state.lines.length-1].mathState.lState, state.lines[state.lines.length-1].mathState.rState)) {
+                    state.currentStatus = 'SOLVED';
+                    document.getElementById('success-message').classList.remove('hidden');
+                }
             }
             renderWorkspace();
         }
@@ -754,16 +764,31 @@ function renderAST(node) {
 
 // === SEKSJON: Spill-logikk & Operasjoner ===
 
-function isSolved(lPoly, rPoly) {
+// NYTT: Støtter at man kan ha løsninger som er brøker (f.eks x = 64/3)
+function isSolved(lNode, rNode) {
     if (state.currentMode === 'expression') return false; 
-    let lKeys = Object.keys(lPoly), rKeys = Object.keys(rPoly);
-    const isSingleX = (p, keys) => keys.length === 1 && keys[0] === '1' && p['1'] === 1;
-    const isNumOnly = (p, keys) => keys.length === 1 && keys[0] === '0';
-    if (lKeys.length === 0) lKeys = ['0'];
-    if (rKeys.length === 0) rKeys =['0'];
+    let lFrac, rFrac;
+    try {
+        lFrac = evaluateToFraction(lNode);
+        rFrac = evaluateToFraction(rNode);
+    } catch(e) { return false; }
     
-    if (isSingleX(lPoly, lKeys) && isNumOnly(rPoly, rKeys)) return true;
-    if (isSingleX(rPoly, rKeys) && isNumOnly(lPoly, lKeys)) return true;
+    const isX = (frac) => {
+        let numKeys = Object.keys(frac.num);
+        let denKeys = Object.keys(frac.den);
+        return numKeys.length === 1 && numKeys[0] === '1' && frac.num['1'] === 1 && 
+               denKeys.length === 1 && denKeys[0] === '0' && frac.den['0'] === 1;
+    };
+    
+    const isNum = (frac) => {
+        let numKeys = Object.keys(frac.num);
+        let denKeys = Object.keys(frac.den);
+        return (numKeys.length === 0 || (numKeys.length === 1 && numKeys[0] === '0')) &&
+               (denKeys.length === 0 || (denKeys.length === 1 && denKeys[0] === '0'));
+    };
+
+    if (isX(lFrac) && isNum(rFrac)) return true;
+    if (isX(rFrac) && isNum(lFrac)) return true;
     return false;
 }
 
@@ -782,13 +807,16 @@ function startEquation(leftStr, rightStr, mode) {
             pastAction: null
         }];
         
-        let solved = false;
         if (state.currentMode === 'equation') {
-            try { solved = isSolved(evaluateToPoly(lParsed), evaluateToPoly(rParsed)); } catch(e){}
+            if (isSolved(lParsed, rParsed)) {
+                state.currentStatus = 'SOLVED';
+                document.getElementById('success-message').classList.remove('hidden');
+            } else {
+                state.currentStatus = 'WAITING_FOR_ACTION';
+                document.getElementById('success-message').classList.add('hidden');
+            }
         }
         
-        state.currentStatus = solved ? 'SOLVED' : 'WAITING_FOR_ACTION';
-        document.getElementById('success-message').classList.add('hidden');
         renderWorkspace();
     } catch (err) { alert("Feil under oppstart: " + err); }
 }
@@ -833,11 +861,10 @@ function handleSimplify() {
     let unsimplifiedLine = state.lines[state.lines.length - 1];
     try {
         function simplifyNode(node) {
-            let frac = evaluateToFraction(node);
-            let div = polyDivAlg(frac.num, frac.den);
-            if (Object.keys(div.r).length === 0) {
-                return { type: 'FlatPoly', poly: div.q, id: uid() };
-            } else {
+            try {
+                return { type: 'FlatPoly', poly: evaluateToPoly(node), id: uid() };
+            } catch (e) {
+                let frac = evaluateToFraction(node);
                 return { type: 'Div', left: { type: 'FlatPoly', poly: frac.num, id: uid() }, right: { type: 'FlatPoly', poly: frac.den, id: uid() }, id: uid() };
             }
         }
@@ -851,12 +878,10 @@ function handleSimplify() {
             pastAction: null
         });
         
-        try {
-            if (isSolved(evaluateToPoly(newL), evaluateToPoly(newR))) {
-                state.currentStatus = 'SOLVED';
-                document.getElementById('success-message').classList.remove('hidden');
-            } else { state.currentStatus = 'WAITING_FOR_ACTION'; }
-        } catch(e) { state.currentStatus = 'WAITING_FOR_ACTION'; }
+        if (isSolved(newL, newR)) {
+            state.currentStatus = 'SOLVED';
+            document.getElementById('success-message').classList.remove('hidden');
+        } else { state.currentStatus = 'WAITING_FOR_ACTION'; }
         
         renderWorkspace();
     } catch(err) { alert("Feil under utregning: " + err); }
@@ -1054,9 +1079,6 @@ window.onload = () => {
     undoBtn.style.backgroundColor = '#ffc107'; 
     undoBtn.style.color = '#333';
     undoBtn.style.marginLeft = '10px';
-    
-    // FIKS 2: Angre-knappen ble redesignet for å ta høyde for de "mellomstegene" 
-    // vi nå lager under manuell forkortning. Den spoler trygt tilbake til et åpent input-felt.
     undoBtn.onclick = () => {
         if (state.lines.length > 1) {
             state.lines.pop(); 
@@ -1067,7 +1089,6 @@ window.onload = () => {
                 last = state.lines[state.lines.length - 1];
             }
             
-            // Gjør linjen klar for ny input
             last.pastAction = null;
             state.currentStatus = 'WAITING_FOR_ACTION';
             document.getElementById('success-message').classList.add('hidden');
@@ -1111,7 +1132,6 @@ window.onload = () => {
         renderWorkspace();
     };
 
-    // FIKS 3: Ekte matematisk validering av stryking (Fikset for input-felt)
     document.getElementById('btn-verify-cancel').onclick = () => {
         if (state.cancelSelection.length === 0) {
             alert("Du har ikke valgt noen ledd å forkorte bort ennå.");
@@ -1172,7 +1192,6 @@ window.onload = () => {
             
             alert(msg);
 
-            // Gi forrige linje et pent navn
             if (!lastLine.pastAction) {
                 lastLine.pastAction = 'Manuell forkorting';
             }
@@ -1203,12 +1222,22 @@ window.onload = () => {
             state.lines.push({
                 type: 'READY',
                 mathState: { lState: globalClean(astNewL), rState: globalClean(astNewR) },
-                pastAction: null // NÅ VIL PANELET VISES IGJEN!
+                pastAction: null
             });
 
             state.manualCancelMode = false;
             state.cancelSelection = [];
             state.currentStatus = 'WAITING_FOR_ACTION';
+            
+            if (state.currentMode === 'equation') {
+                let topL = state.lines[state.lines.length-1].mathState.lState;
+                let topR = state.lines[state.lines.length-1].mathState.rState;
+                if (isSolved(topL, topR)) {
+                    state.currentStatus = 'SOLVED';
+                    document.getElementById('success-message').classList.remove('hidden');
+                }
+            }
+
             document.getElementById('manual-cancel-panel').classList.add('hidden');
             renderWorkspace();
             
