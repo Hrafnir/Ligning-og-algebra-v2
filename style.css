@@ -1,4 +1,4 @@
-/* Version: #22 - Komplett, uforkortet CSS med grid-layout og høyreklikkmeny */
+/* Version: #25 - Komplett CSS med Manuell Forkortning, Menyer og Grid-layout */
 :root {
     --bg-color: #f4f7f6;
     --paper-color: #ffffff;
@@ -132,7 +132,7 @@ header {
 /* Normal Grid (Ligningsmodus) */
 .math-row {
     display: grid;
-    /* NYTT: Bruker en CSS-variabel (--right-width) for å skyve handlingsboksen perfekt på plass */
+    /* Dynamisk CSS-variabel som skyver handlingsboksen perfekt inntil ligningen */
     grid-template-columns: 1fr 40px var(--right-width, 150px) minmax(200px, 1fr);
     align-items: center;
     font-size: 24px;
@@ -238,7 +238,7 @@ sup {
     border-radius: 4px;
     padding: 2px 4px;
     margin: 0 2px;
-    border: 1px solid transparent; /* Beholder layout-bredden så ting ikke hopper */
+    border: 1px solid transparent; 
     transition: background-color 0.2s, border-color 0.2s;
     display: inline-flex;
     align-items: center;
@@ -246,7 +246,7 @@ sup {
 
 .interactive-node:hover {
     background-color: rgba(220, 53, 69, 0.05);
-    border-color: rgba(220, 53, 69, 0.6); /* Den tynne røde linjen */
+    border-color: rgba(220, 53, 69, 0.6); 
 }
 
 .interactive-node:active {
@@ -254,11 +254,11 @@ sup {
     box-shadow: none;
 }
 
-/* Visuell effekt for strøkne/forkortede brøkdeler */
+/* Visuell effekt for automatisk strøkne/forkortede brøkdeler */
 .cancelled {
     position: relative;
     color: #999;
-    pointer-events: none; /* Kan ikke klikkes på nytt etter at den er strøket */
+    pointer-events: none; 
 }
 
 .cancelled::after {
@@ -274,10 +274,44 @@ sup {
     opacity: 0.8;
 }
 
+/* --- NYTT: Manuell Forkortnings-modus CSS --- */
+.manual-selected {
+    background-color: rgba(220, 53, 69, 0.15); /* Svak rød bakgrunn for å vise at den er valgt */
+    border: 1px dashed #dc3545 !important; /* Stiplet rød ramme */
+    position: relative;
+    color: #999;
+}
+
+.manual-selected::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: -10%;
+    width: 120%;
+    height: 3px;
+    background-color: var(--cancel-color);
+    transform: translateY(-50%) rotate(-15deg);
+    border-radius: 2px;
+    opacity: 0.8;
+}
+
+#manual-cancel-panel {
+    background: #fff3cd;
+    border: 1px solid #ffeeba;
+    padding: 10px;
+    border-radius: 6px;
+    margin-top: 10px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+}
+
 /* --- Handlingsboks (Høyre kolonne) --- */
 .action-cell {
     text-align: left;
-    padding-left: 10px; /* Halvert padding for å trekke den nærmere ligningen */
+    padding-left: 10px; 
     display: flex;
     align-items: center;
     gap: 10px;
@@ -285,9 +319,9 @@ sup {
 
 .action-box {
     border: 2px solid #555;
-    padding: 2px 10px; /* Gjort mer kompakt og ryddig for PNG-utskrift */
+    padding: 2px 10px; 
     border-radius: 4px;
-    font-size: 18px; /* Redusert fontstørrelsen litt så det føles som notater */
+    font-size: 18px; 
     color: #555;
     display: inline-flex;
     align-items: center;
@@ -431,35 +465,4 @@ sup {
 #math-context-menu .menu-item:hover {
     background: var(--accent-color);
     color: white;
-}
-
-/* --- Manuell Forkortnings-modus CSS --- */
-.manual-selected {
-    position: relative;
-    color: #999;
-}
-
-.manual-selected::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: -10%;
-    width: 120%;
-    height: 3px;
-    background-color: var(--cancel-color);
-    transform: translateY(-50%) rotate(-15deg);
-    border-radius: 2px;
-    opacity: 0.8;
-}
-
-#manual-cancel-panel {
-    background: #fff3cd;
-    border: 1px solid #ffeeba;
-    padding: 10px;
-    border-radius: 6px;
-    margin-top: 10px;
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    justify-content: center;
 }
