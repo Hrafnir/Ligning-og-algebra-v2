@@ -1,31 +1,21 @@
-/* Version: #19 - Oppdatert med nye tegn, bedre eksport og dynamisk tittel */
+/* Version: #20 - Ny UI, kontekstmeny, faktorisering og bugfix for parenteser */
 
 // === SEKSJON: Data & Eksempler ===
 const examples =[
     // Ligninger - Enkle
-    { label: "2x - 4 = x + 4 (Fra bildet)", left: "2x - 4", right: "x + 4", mode: "equation", group: "Ligninger (Lineære)" },
+    { label: "2(x + 3) = 14", left: "2(x + 3)", right: "14", mode: "equation", group: "Ligninger (Parenteser)" },
     { label: "5x + 10 = 25", left: "5x + 10", right: "25", mode: "equation", group: "Ligninger (Lineære)" },
     { label: "3x - 7 = 2x + 5", left: "3x - 7", right: "2x + 5", mode: "equation", group: "Ligninger (Lineære)" },
     
-    // Ligninger - Parenteser
-    { label: "2(x + 3) = 14", left: "2(x + 3)", right: "14", mode: "equation", group: "Ligninger (Parenteser)" },
-    { label: "3(x - 2) + 4 = 13", left: "3(x - 2) + 4", right: "13", mode: "equation", group: "Ligninger (Parenteser)" },
-    { label: "5(2x - 1) = 3(3x + 2)", left: "5(2x - 1)", right: "3(3x + 2)", mode: "equation", group: "Ligninger (Parenteser)" },
-    
     // Ligninger - Brøk & Pythagoras
     { label: "12/x = 4", left: "12/x", right: "4", mode: "equation", group: "Ligninger (Brøk & Potens)" },
-    { label: "(x - 2)/(x^2 - 4x + 4) = 12 (Din oppgave!)", left: "(x - 2)/(x^2 - 4x + 4)", right: "12", mode: "equation", group: "Ligninger (Brøk & Potens)" },
-    { label: "24 / (x + 2) = 6", left: "24 / (x + 2)", right: "6", mode: "equation", group: "Ligninger (Brøk & Potens)" },
-    { label: "x^2 + 6^2 = 10^2 (Pythagoras)", left: "x^2 + 6^2", right: "10^2", mode: "equation", group: "Ligninger (Brøk & Potens)" },
-    { label: "x^2 + 5^2 = 13^2 (Pythagoras)", left: "x^2 + 5^2", right: "13^2", mode: "equation", group: "Ligninger (Brøk & Potens)" },
+    { label: "(x - 2)/(x^2 - 4x + 4) = 12", left: "(x - 2)/(x^2 - 4x + 4)", right: "12", mode: "equation", group: "Ligninger (Brøk & Potens)" },
+    { label: "x^2 + 6^2 = 10^2", left: "x^2 + 6^2", right: "10^2", mode: "equation", group: "Ligninger (Brøk & Potens)" },
     
     // Algebra - Forenkling & Faktorisering
-    { label: "x^2 + 4x + 4 (1. Kvadratsetning)", left: "x^2 + 4x + 4", right: "0", mode: "expression", group: "Algebra (Forenkle & Faktorisere)" },
-    { label: "x^2 - 6x + 9 (2. Kvadratsetning)", left: "x^2 - 6x + 9", right: "0", mode: "expression", group: "Algebra (Forenkle & Faktorisere)" },
-    { label: "x^2 - 25 (Konjugatsetning)", left: "x^2 - 25", right: "0", mode: "expression", group: "Algebra (Forenkle & Faktorisere)" },
-    { label: "(x^2 - 9) / (x - 3) (Forkorting)", left: "(x^2 - 9) / (x - 3)", right: "0", mode: "expression", group: "Algebra (Forenkle & Faktorisere)" },
-    { label: "(x^2 + 8x + 16) / (x + 4) (Forkorting)", left: "(x^2 + 8x + 16) / (x + 4)", right: "0", mode: "expression", group: "Algebra (Forenkle & Faktorisere)" },
-    { label: "3(x + 2) + 4(x - 1) (Forenkling)", left: "3(x + 2) + 4(x - 1)", right: "0", mode: "expression", group: "Algebra (Forenkle & Faktorisere)" }
+    { label: "x^2 + 4x + 4", left: "x^2 + 4x + 4", right: "0", mode: "expression", group: "Algebra (Forenkle & Faktorisere)" },
+    { label: "x^2 - 25", left: "x^2 - 25", right: "0", mode: "expression", group: "Algebra (Forenkle & Faktorisere)" },
+    { label: "(x^2 - 9) / (x - 3)", left: "(x^2 - 9) / (x - 3)", right: "0", mode: "expression", group: "Algebra (Forenkle & Faktorisere)" }
 ];
 
 let state = {
@@ -34,7 +24,7 @@ let state = {
     currentMode: 'equation'
 };
 
-// === SEKSJON: Kjerne-Matematikk (Flate Polynomer & Brøker) ===
+// === SEKSJON: Kjerne-Matematikk ===
 
 function cleanState(poly) {
     let clean = {};
@@ -139,8 +129,27 @@ function polyDivAlg(n, d) {
     return { q: cleanState(q), r: cleanState(r) };
 }
 
+// NYTT: Primtallsfaktorisering
+function getPrimeFactors(n) {
+    let factors = [];
+    let d = 2;
+    while (n > 1) {
+        while (n % d === 0) { factors.push(d); n /= d; }
+        d++;
+        if (d * d > n && n > 1) { factors.push(n); break; }
+    }
+    return factors;
+}
 
-// === SEKSJON: AST (Abstract Syntax Tree) Parser ===
+function buildFactorTree(factors) {
+    if (factors.length === 0) return { type: 'FlatPoly', poly: {0:1}, id: uid() };
+    if (factors.length === 1) return { type: 'FlatPoly', poly: {0: factors[0]}, id: uid() };
+    let left = { type: 'FlatPoly', poly: {0: factors[0]}, id: uid() };
+    let right = buildFactorTree(factors.slice(1));
+    return { type: 'Mul', left: left, right: right, implicit: false, id: uid() };
+}
+
+// === SEKSJON: AST Parser ===
 
 function uid() { return Math.random().toString(36).substr(2, 9); }
 
@@ -346,7 +355,6 @@ function tryCancelFraction(divNode) {
             }
             return n;
         }
-        
         let newTop = removeCancelled(divNode.left) || { type: 'FlatPoly', poly: {0:1}, id: uid() };
         let newBot = removeCancelled(divNode.right) || { type: 'FlatPoly', poly: {0:1}, id: uid() };
         
@@ -392,7 +400,81 @@ function tryCancelFraction(divNode) {
     return { type: 'Div', left: rebuildWithCancelled(topFactors), right: rebuildWithCancelled(botFactors), id: uid() };
 }
 
-// === SEKSJON: Interaktivitet (Klikk) ===
+// === SEKSJON: Kontekstmeny & Interaktivitet (NYTT SYSTEM) ===
+
+// Finner en spesifikk node i AST basert på ID
+function findNodeById(node, id) {
+    if (!node) return null;
+    if (node.id === id) return node;
+    if (node.type === 'Expr') {
+        for (let el of node.elements) {
+            let f = findNodeById(el.node, id);
+            if (f) return f;
+        }
+    }
+    if (node.type === 'Mul' || node.type === 'Div' || node.type === 'Pow') {
+        return findNodeById(node.left, id) || findNodeById(node.right, id);
+    }
+    if (node.type === 'Parens' || node.type === 'Sqrt' || node.type === 'Cancelled') {
+        return findNodeById(node.inner, id);
+    }
+    return null;
+}
+
+// Åpner kontekstmenyen når man klikker eller høyreklikker
+window.openNodeMenu = function(e, id) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    let lastLine = state.lines[state.lines.length - 1];
+    let node = findNodeById(lastLine.mathState.lState, id) || findNodeById(lastLine.mathState.rState, id);
+    if (!node) return;
+
+    let menu = document.getElementById('math-context-menu');
+    menu.innerHTML = ''; 
+
+    let options = [];
+    let poly = null;
+    try { poly = evaluateToPoly(node); } catch(err) {}
+
+    // 1. Kan tallet faktoriseres?
+    if (poly && Object.keys(poly).length === 1 && poly['0'] > 1 && Number.isInteger(poly['0'])) {
+        let factors = getPrimeFactors(poly['0']);
+        if (factors.length > 1) { 
+            options.push({ label: 'Faktoriser tall', action: 'FACTORIZE_NUM' });
+        }
+    }
+
+    // 2. Er det et gangestykke med parentes?
+    if (node.type === 'Mul' && (node.left.type === 'Parens' || node.right.type === 'Parens')) {
+        options.push({ label: 'Multipliser inn (Løs opp parentes)', action: 'DISTRIBUTE' });
+    }
+
+    // 3. Generelle handlinger
+    if (node.type === 'Expr' && node.elements.length > 1) {
+        options.push({ label: 'Trekk sammen uttrykk', action: 'EVALUATE' });
+    } else if (node.type === 'Div') {
+        options.push({ label: 'Forkort brøk', action: 'SIMPLIFY' });
+    } else {
+        options.push({ label: 'Forenkle', action: 'SIMPLIFY' });
+    }
+
+    options.forEach(opt => {
+        let item = document.createElement('div');
+        item.className = 'menu-item';
+        item.textContent = opt.label;
+        item.onclick = (event) => {
+            event.stopPropagation(); 
+            menu.classList.add('hidden');
+            executeAction(id, opt.action);
+        };
+        menu.appendChild(item);
+    });
+
+    menu.style.left = e.pageX + 'px';
+    menu.style.top = e.pageY + 'px';
+    menu.classList.remove('hidden');
+};
 
 function performLocalSimplification(node) {
     if (node.type === 'Expr' || node.type === 'FlatPoly') {
@@ -410,30 +492,43 @@ function performLocalSimplification(node) {
     if (node.type === 'Mul') {
         let isRightParen = node.right.type === 'Parens' && node.right.inner.type === 'Expr';
         let isLeftParen = node.left.type === 'Parens' && node.left.inner.type === 'Expr';
-
         if (isRightParen) return { type: 'Expr', elements: node.right.inner.elements.map(e => ({ sign: e.sign, node: { type: 'Mul', left: node.left, right: e.node, implicit: node.implicit, id: uid() } })), id: uid() };
         if (isLeftParen) return { type: 'Expr', elements: node.left.inner.elements.map(e => ({ sign: e.sign, node: { type: 'Mul', left: e.node, right: node.right, implicit: node.implicit, id: uid() } })), id: uid() };
-        
         try { return { type: 'FlatPoly', poly: evaluateToPoly(node), id: uid() }; } catch(e) {}
     }
-    if (node.type === 'Div') {
-        return tryCancelFraction(node);
+    if (node.type === 'Div') return tryCancelFraction(node);
+    
+    // Bug-fiks: Tillater ikke parentesen å strippe seg selv med mindre innholdet er ferdig forenklet til ett ledd
+    if (node.type === 'Parens') {
+        let simP = performLocalSimplification(node.inner);
+        if (simP.type === 'FlatPoly' || (simP.type === 'Expr' && simP.elements.length === 1)) return simP;
+        return { ...node, inner: simP };
     }
-    if (node.type === 'Parens') return node.inner;
+    
     if (node.type === 'Sqrt') {
         try { return { type: 'FlatPoly', poly: evaluateToPoly(node), id: uid() }; } catch(e) {}
     }
     return node;
 }
 
-window.triggerNodeClick = function(e, id) {
-    e.stopPropagation(); 
+window.executeAction = function(id, action) {
     let lastLine = state.lines[state.lines.length - 1];
     let changed = false;
 
     function traverseAndReplace(node) {
         if (!node) return node;
-        if (node.id === id) { changed = true; return performLocalSimplification(node); }
+        if (node.id === id) { 
+            changed = true; 
+            if (action === 'SIMPLIFY') return performLocalSimplification(node);
+            if (action === 'EVALUATE') return { type: 'FlatPoly', poly: evaluateToPoly(node), id: uid() };
+            if (action === 'FACTORIZE_NUM') return buildFactorTree(getPrimeFactors(evaluateToPoly(node)['0']));
+            if (action === 'DISTRIBUTE') {
+                let isRightParen = node.right.type === 'Parens' && node.right.inner.type === 'Expr';
+                let isLeftParen = node.left.type === 'Parens' && node.left.inner.type === 'Expr';
+                if (isRightParen) return { type: 'Expr', elements: node.right.inner.elements.map(e => ({ sign: e.sign, node: { type: 'Mul', left: node.left, right: e.node, implicit: node.implicit, id: uid() } })), id: uid() };
+                if (isLeftParen) return { type: 'Expr', elements: node.left.inner.elements.map(e => ({ sign: e.sign, node: { type: 'Mul', left: e.node, right: node.right, implicit: node.implicit, id: uid() } })), id: uid() };
+            }
+        }
         if (node.type === 'Expr') return { ...node, elements: node.elements.map(e => ({ sign: e.sign, node: traverseAndReplace(e.node) })) };
         if (node.type === 'Mul' || node.type === 'Div' || node.type === 'Pow') return { ...node, left: traverseAndReplace(node.left), right: traverseAndReplace(node.right) };
         if (node.type === 'Parens' || node.type === 'Sqrt' || node.type === 'Cancelled') return { ...node, inner: traverseAndReplace(node.inner) };
@@ -457,9 +552,8 @@ window.triggerNodeClick = function(e, id) {
             }
             renderWorkspace();
         }
-    } catch(err) { alert("Kan ikke utføre: " + err); }
+    } catch(err) { alert("Kan ikke utføre handlingen: " + err); }
 };
-
 
 // === SEKSJON: HTML Rendering av Tre-strukturen ===
 
@@ -490,7 +584,8 @@ function renderFlatPoly(poly) {
 function renderAST(node) {
     if (node.type === 'FlatPoly') return renderFlatPoly(node.poly);
     
-    let wrap = (inner) => `<span class="interactive-node" onclick="triggerNodeClick(event, '${node.id}')" title="Trykk for å regne/omforme">${inner}</span>`;
+    // NYTT: Både vanlig klikk og høyreklikk åpner nå kontekstmenyen for elementet
+    let wrap = (inner) => `<span class="interactive-node" onclick="openNodeMenu(event, '${node.id}')" oncontextmenu="openNodeMenu(event, '${node.id}')" title="Klikk for handlinger">${inner}</span>`;
     
     if (node.type === 'Cancelled') return `<span class="cancelled">${renderAST(node.inner)}</span>`;
     if (node.type === 'Pow') return wrap(`${renderAST(node.left)}<sup>${renderAST(node.right)}</sup>`);
@@ -511,7 +606,6 @@ function renderAST(node) {
     }
     return '';
 }
-
 
 // === SEKSJON: Spill-logikk & Operasjoner ===
 
@@ -575,7 +669,6 @@ function handleActionSubmit(operator, actionStr) {
     
     let lastLine = state.lines[state.lines.length - 1];
     
-    // Gange og dele-tegn erstattes visuelt i historikken
     let displayOp = operator;
     if (operator === '*') displayOp = '&middot;';
     if (operator === '/') displayOp = ':';
@@ -624,7 +717,6 @@ function handleSimplify() {
     } catch(err) { alert("Feil under utregning: " + err); }
 }
 
-
 // === SEKSJON: DOM & Rendering ===
 
 function renderWorkspace() {
@@ -659,7 +751,6 @@ function renderWorkspace() {
         } else if (isLastRow && state.currentMode === 'equation') {
             if (state.currentStatus === 'WAITING_FOR_ACTION' || state.currentStatus === 'SOLVED') {
                 if (state.currentStatus !== 'SOLVED') {
-                    // Nytt select-oppsett med · og :
                     actionDiv.innerHTML = `
                         <div class="active-action-panel">
                             <select id="op-select">
@@ -705,7 +796,6 @@ function bindActionEvents() {
     }
 }
 
-
 // === SEKSJON: Kontroller & Init ===
 
 function initExamples() {
@@ -747,11 +837,9 @@ document.getElementById('btn-load-custom').addEventListener('click', () => {
     if(l && r) startEquation(l, r, mode); else alert("Fyll inn feltet.");
 });
 
-// Eksportfunksjon med dynamisk tittel, dato og filnavn
 document.getElementById('btn-export-png').addEventListener('click', () => {
     const container = document.getElementById('workspace-container');
     
-    // 1. Lag en midlertidig overskrift
     const titleEl = document.createElement('h2');
     titleEl.textContent = 'Oppgaveløsning';
     titleEl.style.textAlign = 'center';
@@ -759,7 +847,6 @@ document.getElementById('btn-export-png').addEventListener('click', () => {
     titleEl.style.color = '#333';
     titleEl.style.fontFamily = "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif";
 
-    // 2. Lag en midlertidig undertekst (f.eks. dato)
     const dateStr = new Date().toLocaleDateString('no-NO');
     const subtitleEl = document.createElement('p');
     subtitleEl.textContent = `Dato: ${dateStr}`;
@@ -768,14 +855,11 @@ document.getElementById('btn-export-png').addEventListener('click', () => {
     subtitleEl.style.margin = '0 0 20px 0';
     subtitleEl.style.fontFamily = "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif";
 
-    // 3. Legg dem inn øverst i arbeidsflaten
     container.insertBefore(subtitleEl, container.firstChild);
     container.insertBefore(titleEl, container.firstChild);
     
-    // 4. Skjul unødvendig UI via CSS-klassen
     container.classList.add('export-mode');
     
-    // 5. Ta bildet!
     html2canvas(container, { backgroundColor: '#ffffff', scale: 2 }).then(canvas => {
         let link = document.createElement('a');
         let safeDateStr = dateStr.replace(/\./g, '-');
@@ -783,7 +867,6 @@ document.getElementById('btn-export-png').addEventListener('click', () => {
         link.href = canvas.toDataURL('image/png');
         link.click();
         
-        // 6. Rydd opp
         container.classList.remove('export-mode');
         titleEl.remove();
         subtitleEl.remove();
@@ -792,6 +875,20 @@ document.getElementById('btn-export-png').addEventListener('click', () => {
 
 window.onload = () => {
     initExamples();
+    
+    // NYTT: Setter opp kontekstmenyen i bakgrunnen
+    const menu = document.createElement('div');
+    menu.id = 'math-context-menu';
+    menu.className = 'hidden';
+    document.body.appendChild(menu);
+    
+    // Klikk utenfor menyen lukker den
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('#math-context-menu')) {
+            menu.classList.add('hidden');
+        }
+    });
+
     const eq = examples[0];
     startEquation(eq.left, eq.right, eq.mode);
 };
