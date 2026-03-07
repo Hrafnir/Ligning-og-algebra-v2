@@ -1,4 +1,4 @@
-/* Version: #29 - Slette linjer og forbedret bilde-eksport */
+/* Version: #30 - Tittel og forklarende tekst på utskrift */
 
 const examples =[
     { label: "2(x + 3) = 14", left: "2(x + 3)", right: "14", mode: "equation", group: "Ligninger (Parenteser)" },
@@ -915,7 +915,6 @@ function renderWorkspace() {
         if (line.pastAction) {
             actionDiv.innerHTML = `<span class="action-box">${line.pastAction}</span>`;
             
-            // NYTT: Legger til slette-knapp (✖) på loggførte rader, så lenge det ikke er den eneste raden
             if (state.lines.length > 1) {
                 const delBtn = document.createElement('button');
                 delBtn.className = 'delete-line-btn';
@@ -924,7 +923,6 @@ function renderWorkspace() {
                 delBtn.onclick = () => {
                     state.lines.splice(index, 1);
                     
-                    // Sjekk om ny siste-rad utgjør en løsning (I tilfelle brukeren slettet løsnings-raden)
                     let newLast = state.lines[state.lines.length - 1];
                     if (state.currentMode === 'equation' && isSolved(newLast.mathState.lState, newLast.mathState.rState)) {
                         state.currentStatus = 'SOLVED';
@@ -962,7 +960,6 @@ function renderWorkspace() {
                 setTimeout(() => document.getElementById('btn-simplify').addEventListener('click', handleSimplify), 0);
             }
             
-            // Kan også slette aktive rader hvis man har rotet seg inn i en blindvei
             if (state.lines.length > 1) {
                 const delBtn = document.createElement('button');
                 delBtn.className = 'delete-line-btn';
@@ -1092,12 +1089,16 @@ document.getElementById('btn-load-custom').addEventListener('click', () => {
     if(l && r) startEquation(l, r, mode); else alert("Fyll inn feltet.");
 });
 
-// NYTT: Sentralisert bilde-eksport funksjon som tar parameter
+// NYTT: Bildeeksport med egendefinert tittel og beskrivelse
 function exportImage(mode) {
     const container = document.getElementById('workspace-container');
     
+    // Henter inn teksten brukeren har skrevet
+    const customTitle = document.getElementById('export-title').value.trim();
+    const customDesc = document.getElementById('export-desc').value.trim();
+    
     const titleEl = document.createElement('h2');
-    titleEl.textContent = 'Oppgaveløsning';
+    titleEl.textContent = customTitle || 'Oppgaveløsning';
     titleEl.style.textAlign = 'center';
     titleEl.style.margin = '0 0 5px 0';
     titleEl.style.color = '#333';
@@ -1107,10 +1108,29 @@ function exportImage(mode) {
     const subtitleEl = document.createElement('p');
     subtitleEl.textContent = `Dato: ${dateStr}`;
     subtitleEl.style.textAlign = 'center';
-    subtitleEl.style.color = '#666';
-    subtitleEl.style.margin = '0 0 20px 0';
+    subtitleEl.style.color = '#888';
+    subtitleEl.style.fontSize = '14px';
+    subtitleEl.style.margin = '0 0 15px 0';
     subtitleEl.style.fontFamily = "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif";
 
+    let descEl = null;
+    if (customDesc) {
+        descEl = document.createElement('div');
+        descEl.textContent = customDesc;
+        descEl.style.textAlign = 'center';
+        descEl.style.color = '#444';
+        descEl.style.backgroundColor = '#f8f9fa';
+        descEl.style.border = '1px solid #e9ecef';
+        descEl.style.borderRadius = '6px';
+        descEl.style.padding = '15px';
+        descEl.style.margin = '0 auto 25px auto';
+        descEl.style.fontSize = '16px';
+        descEl.style.lineHeight = '1.5';
+        descEl.style.maxWidth = '80%';
+        descEl.style.fontFamily = "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif";
+    }
+
+    if (descEl) container.insertBefore(descEl, container.firstChild);
     container.insertBefore(subtitleEl, container.firstChild);
     container.insertBefore(titleEl, container.firstChild);
     
@@ -1126,7 +1146,6 @@ function exportImage(mode) {
             link.href = dataUrl;
             link.click();
         } else if (mode === 'tab') {
-            // Åpner trygt i ny fane ved å bygge et basic HTML-dokument med bildet i
             let newTab = window.open();
             if (newTab) {
                 newTab.document.write(`
@@ -1146,6 +1165,7 @@ function exportImage(mode) {
         container.classList.remove('export-mode');
         titleEl.remove();
         subtitleEl.remove();
+        if (descEl) descEl.remove();
     });
 }
 
