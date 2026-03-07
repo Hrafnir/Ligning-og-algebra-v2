@@ -1,4 +1,4 @@
-/* Version: #18 - Oppdatert med nye tegn og bedre eksport */
+/* Version: #19 - Oppdatert med nye tegn, bedre eksport og dynamisk tittel */
 
 // === SEKSJON: Data & Eksempler ===
 const examples =[
@@ -31,7 +31,7 @@ const examples =[
 let state = {
     lines:[], 
     currentStatus: 'IDLE', 
-    currentMode: 'equation' // 'equation' eller 'expression'
+    currentMode: 'equation'
 };
 
 // === SEKSJON: Kjerne-Matematikk (Flate Polynomer & Brøker) ===
@@ -106,7 +106,6 @@ function polyEquals(p1, p2) {
     return true;
 }
 
-// NY: Ekte Polynomdivisjon (Langdivisjon for algebra)
 function polyDivAlg(n, d) {
     let nClean = cleanState(n);
     let dClean = cleanState(d);
@@ -124,9 +123,9 @@ function polyDivAlg(n, d) {
     
     while (iter++ < maxIter) {
         let rKeys = Object.keys(r).map(Number).sort((a,b)=>b-a);
-        if (rKeys.length === 0) break; // Gikk opp i null (Perfekt divisjon!)
+        if (rKeys.length === 0) break;
         let rDeg = rKeys[0];
-        if (rDeg < dDeg) break; // Restens grad er lavere enn nevnerens
+        if (rDeg < dDeg) break; 
         
         let termDeg = rDeg - dDeg;
         let termCoef = r[rDeg] / dClean[dDeg];
@@ -233,9 +232,8 @@ function parseSide(sideStr) {
     return parseTokens(tokenize(sideStr));
 }
 
-// === SEKSJON: Evaluering (Ny Brøk-håndtering) ===
+// === SEKSJON: Evaluering ===
 
-// Denne funksjonen knuser et tre ned til teller og nevner (som to polynom)
 function evaluateToFraction(node) {
     if (!node) return { num: {0:0}, den: {0:1} };
     if (node.type === 'FlatPoly') return { num: node.poly, den: {0:1} };
@@ -279,7 +277,6 @@ function evaluateToFraction(node) {
     return { num: {0:0}, den: {0:1} };
 }
 
-// Henter et flatt polynom. Kaster feil hvis brøken ikke går opp.
 function evaluateToPoly(node) {
     let frac = evaluateToFraction(node);
     let div = polyDivAlg(frac.num, frac.den);
@@ -287,7 +284,6 @@ function evaluateToPoly(node) {
     throw "Dette er en brøk som ikke går opp flatt.";
 }
 
-// Finner Kvadratsetninger
 function tryFactorize(poly) {
     let keys = Object.keys(poly).map(Number).sort((a,b)=>b-a);
     if (keys.length === 2 && keys.includes(2) && keys.includes(0)) {
@@ -405,7 +401,7 @@ function performLocalSimplification(node) {
             let factored = tryFactorize(poly);
             if (factored) return factored;
             if (node.type === 'Expr') return { type: 'FlatPoly', poly: poly, id: uid() };
-        } catch(e) {} // Hvis uforenklig brøk, la den være
+        } catch(e) {}
         return node;
     }
     if (node.type === 'Pow') {
@@ -579,12 +575,11 @@ function handleActionSubmit(operator, actionStr) {
     
     let lastLine = state.lines[state.lines.length - 1];
     
-    // NYTT: Bestemmer hvilket tegn som skal vises i UI
+    // Gange og dele-tegn erstattes visuelt i historikken
     let displayOp = operator;
     if (operator === '*') displayOp = '&middot;';
     if (operator === '/') displayOp = ':';
     
-    // Bruker displayOp i stedet for operator i tekststrengen
     lastLine.pastAction = operator === '√' ? '√' : `${displayOp} ${actionStr}`;
 
     let actionAST = operator !== '√' ? parseSide(actionStr) : null;
@@ -599,7 +594,6 @@ function handleActionSubmit(operator, actionStr) {
 function handleSimplify() {
     let unsimplifiedLine = state.lines[state.lines.length - 1];
     try {
-        // En "smart" forenkler som prøver å bygge brøken, og gjør polynomdivisjon hvis mulig
         function simplifyNode(node) {
             let frac = evaluateToFraction(node);
             let div = polyDivAlg(frac.num, frac.den);
@@ -665,7 +659,7 @@ function renderWorkspace() {
         } else if (isLastRow && state.currentMode === 'equation') {
             if (state.currentStatus === 'WAITING_FOR_ACTION' || state.currentStatus === 'SOLVED') {
                 if (state.currentStatus !== 'SOLVED') {
-                    // NYTT: Select-boksen har fått &middot; for * og : for /
+                    // Nytt select-oppsett med · og :
                     actionDiv.innerHTML = `
                         <div class="active-action-panel">
                             <select id="op-select">
@@ -753,19 +747,46 @@ document.getElementById('btn-load-custom').addEventListener('click', () => {
     if(l && r) startEquation(l, r, mode); else alert("Fyll inn feltet.");
 });
 
-// NYTT: Eksportfunksjonen legger nå på klassen export-mode rett før bildet tas
+// Eksportfunksjon med dynamisk tittel, dato og filnavn
 document.getElementById('btn-export-png').addEventListener('click', () => {
     const container = document.getElementById('workspace-container');
     
+    // 1. Lag en midlertidig overskrift
+    const titleEl = document.createElement('h2');
+    titleEl.textContent = 'Oppgaveløsning';
+    titleEl.style.textAlign = 'center';
+    titleEl.style.margin = '0 0 5px 0';
+    titleEl.style.color = '#333';
+    titleEl.style.fontFamily = "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif";
+
+    // 2. Lag en midlertidig undertekst (f.eks. dato)
+    const dateStr = new Date().toLocaleDateString('no-NO');
+    const subtitleEl = document.createElement('p');
+    subtitleEl.textContent = `Dato: ${dateStr}`;
+    subtitleEl.style.textAlign = 'center';
+    subtitleEl.style.color = '#666';
+    subtitleEl.style.margin = '0 0 20px 0';
+    subtitleEl.style.fontFamily = "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif";
+
+    // 3. Legg dem inn øverst i arbeidsflaten
+    container.insertBefore(subtitleEl, container.firstChild);
+    container.insertBefore(titleEl, container.firstChild);
+    
+    // 4. Skjul unødvendig UI via CSS-klassen
     container.classList.add('export-mode');
     
+    // 5. Ta bildet!
     html2canvas(container, { backgroundColor: '#ffffff', scale: 2 }).then(canvas => {
         let link = document.createElement('a');
-        link.download = 'matematikk-losning.png';
+        let safeDateStr = dateStr.replace(/\./g, '-');
+        link.download = `matematikk-losning-${safeDateStr}.png`; 
         link.href = canvas.toDataURL('image/png');
         link.click();
         
+        // 6. Rydd opp
         container.classList.remove('export-mode');
+        titleEl.remove();
+        subtitleEl.remove();
     });
 });
 
