@@ -1,4 +1,4 @@
-/* Version: #30 - Tittel og forklarende tekst på utskrift */
+/* Version: #32 - Presisjonsmåling for perfekt crop og fjerning av gap */
 
 const examples =[
     { label: "2(x + 3) = 14", left: "2(x + 3)", right: "14", mode: "equation", group: "Ligninger (Parenteser)" },
@@ -982,10 +982,22 @@ function renderWorkspace() {
     const container = document.getElementById('workspace-container');
     container.scrollTop = container.scrollHeight;
 
+    // NYTT: Supernøyaktig beregning av bredde for å muliggjøre "krymping" ved eksport
     if (state.currentMode === 'equation') {
-        let maxRightWidth = 40; 
-        const rightSides = workspace.querySelectorAll('.right-side');
+        let maxRightWidth = 20; 
+        let maxLeftWidth = 20;
         
+        const leftSides = workspace.querySelectorAll('.left-side');
+        leftSides.forEach(el => {
+            el.style.width = 'max-content';
+            el.style.flexWrap = 'nowrap';
+            let w = el.getBoundingClientRect().width;
+            if (w > maxLeftWidth) maxLeftWidth = w;
+            el.style.width = '';
+            el.style.flexWrap = '';
+        });
+
+        const rightSides = workspace.querySelectorAll('.right-side');
         rightSides.forEach(el => {
             el.style.width = 'max-content';
             el.style.flexWrap = 'nowrap';
@@ -995,7 +1007,20 @@ function renderWorkspace() {
             el.style.flexWrap = '';
         });
         
+        container.style.setProperty('--left-width', Math.ceil(maxLeftWidth) + 5 + 'px');
         container.style.setProperty('--right-width', Math.ceil(maxRightWidth) + 15 + 'px');
+    } else {
+        let maxLeftWidth = 20;
+        const leftSides = workspace.querySelectorAll('.left-side');
+        leftSides.forEach(el => {
+            el.style.width = 'max-content';
+            el.style.flexWrap = 'nowrap';
+            let w = el.getBoundingClientRect().width;
+            if (w > maxLeftWidth) maxLeftWidth = w;
+            el.style.width = '';
+            el.style.flexWrap = '';
+        });
+        container.style.setProperty('--expr-width', Math.ceil(maxLeftWidth) + 20 + 'px');
     }
 }
 
@@ -1089,11 +1114,9 @@ document.getElementById('btn-load-custom').addEventListener('click', () => {
     if(l && r) startEquation(l, r, mode); else alert("Fyll inn feltet.");
 });
 
-// NYTT: Bildeeksport med egendefinert tittel og beskrivelse
 function exportImage(mode) {
     const container = document.getElementById('workspace-container');
     
-    // Henter inn teksten brukeren har skrevet
     const customTitle = document.getElementById('export-title').value.trim();
     const customDesc = document.getElementById('export-desc').value.trim();
     
@@ -1136,37 +1159,41 @@ function exportImage(mode) {
     
     container.classList.add('export-mode');
     
-    html2canvas(container, { backgroundColor: '#ffffff', scale: 2 }).then(canvas => {
-        let dataUrl = canvas.toDataURL('image/png');
-        
-        if (mode === 'download') {
-            let link = document.createElement('a');
-            let safeDateStr = dateStr.replace(/\./g, '-');
-            link.download = `matematikk-losning-${safeDateStr}.png`; 
-            link.href = dataUrl;
-            link.click();
-        } else if (mode === 'tab') {
-            let newTab = window.open();
-            if (newTab) {
-                newTab.document.write(`
-                    <html>
-                    <head><title>Oppgaveløsning</title></head>
-                    <body style="margin: 0; background-color: #f4f7f6; display: flex; justify-content: center; padding: 20px;">
-                        <img src="${dataUrl}" style="max-width: 100%; height: auto; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border-radius: 8px;">
-                    </body>
-                    </html>
-                `);
-                newTab.document.close();
-            } else {
-                alert("Kunne ikke åpne bildet i ny fane. Kanskje nettleseren din blokkerer popups?");
+    // NYTT: Et bittelite brøkdels sekund forsinkelse lar CSSen "krympe" boksen 
+    // før html2canvas tar bildet. Da unngår vi å få med det grå tomrommet.
+    setTimeout(() => {
+        html2canvas(container, { backgroundColor: '#ffffff', scale: 2 }).then(canvas => {
+            let dataUrl = canvas.toDataURL('image/png');
+            
+            if (mode === 'download') {
+                let link = document.createElement('a');
+                let safeDateStr = dateStr.replace(/\./g, '-');
+                link.download = `matematikk-losning-${safeDateStr}.png`; 
+                link.href = dataUrl;
+                link.click();
+            } else if (mode === 'tab') {
+                let newTab = window.open();
+                if (newTab) {
+                    newTab.document.write(`
+                        <html>
+                        <head><title>Oppgaveløsning</title></head>
+                        <body style="margin: 0; background-color: #f4f7f6; display: flex; justify-content: center; padding: 20px;">
+                            <img src="${dataUrl}" style="max-width: 100%; height: auto; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border-radius: 8px;">
+                        </body>
+                        </html>
+                    `);
+                    newTab.document.close();
+                } else {
+                    alert("Kunne ikke åpne bildet i ny fane. Kanskje nettleseren din blokkerer popups?");
+                }
             }
-        }
-        
-        container.classList.remove('export-mode');
-        titleEl.remove();
-        subtitleEl.remove();
-        if (descEl) descEl.remove();
-    });
+            
+            container.classList.remove('export-mode');
+            titleEl.remove();
+            subtitleEl.remove();
+            if (descEl) descEl.remove();
+        });
+    }, 50);
 }
 
 document.getElementById('btn-export-dl').addEventListener('click', () => exportImage('download'));
