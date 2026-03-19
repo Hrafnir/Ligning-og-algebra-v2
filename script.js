@@ -1,4 +1,4 @@
-/* Version: #32 - Presisjonsmåling for perfekt crop og fjerning av gap */
+/* Version: #33 - Fikset sentrering slik at likhetstegnene ( = ) alltid står under hverandre */
 
 const examples =[
     { label: "2(x + 3) = 14", left: "2(x + 3)", right: "14", mode: "equation", group: "Ligninger (Parenteser)" },
@@ -222,7 +222,28 @@ function parseTokens(tokens) {
                 let op = consume().type;
                 node = { type: op === '*' ? 'Mul' : 'Div', left: node, right: parseFactor(), implicit: false, id: uid() };
             } else if (p.type === 'NUM' || p.type === 'x' || p.type === '(') {
-                node = { type: 'Mul', left: node, right: parseFactor(), implicit: true, id: uid() };
+                let implicitRight = parseFactor();
+                
+                let merged = false;
+                if (node.type === 'FlatPoly' && Object.keys(node.poly).length === 1 && node.poly['0'] !== undefined) {
+                    if (implicitRight.type === 'FlatPoly' && Object.keys(implicitRight.poly).length === 1 && implicitRight.poly['1'] !== undefined) {
+                        node = { type: 'FlatPoly', poly: {1: node.poly['0'] * implicitRight.poly['1']}, id: uid() };
+                        merged = true;
+                    }
+                    else if (implicitRight.type === 'Pow' && 
+                             implicitRight.left.type === 'FlatPoly' && Object.keys(implicitRight.left.poly).length === 1 && implicitRight.left.poly['1'] !== undefined &&
+                             implicitRight.right.type === 'FlatPoly' && Object.keys(implicitRight.right.poly).length === 1 && implicitRight.right.poly['0'] !== undefined) {
+                        let exp = implicitRight.right.poly['0'];
+                        let coef = node.poly['0'] * Math.pow(implicitRight.left.poly['1'], exp);
+                        let newPoly = {};
+                        newPoly[exp] = coef;
+                        node = { type: 'FlatPoly', poly: newPoly, id: uid() };
+                        merged = true;
+                    }
+                }
+                if (!merged) {
+                    node = { type: 'Mul', left: node, right: implicitRight, implicit: true, id: uid() };
+                }
             } else break;
         }
         return node;
@@ -982,10 +1003,12 @@ function renderWorkspace() {
     const container = document.getElementById('workspace-container');
     container.scrollTop = container.scrollHeight;
 
-    // NYTT: Supernøyaktig beregning av bredde for å muliggjøre "krymping" ved eksport
+    // NYTT: Måler bredden av ALLE kolonner, inkludert handlingspanelet, slik at CSS-grid
+    // bruker faste kolonner på tvers av hele oppgaven. Dette sikrer at = tegnet ALDRI flytter på seg!
     if (state.currentMode === 'equation') {
         let maxRightWidth = 20; 
         let maxLeftWidth = 20;
+        let maxActionWidth = 20;
         
         const leftSides = workspace.querySelectorAll('.left-side');
         leftSides.forEach(el => {
@@ -1006,11 +1029,23 @@ function renderWorkspace() {
             el.style.width = '';
             el.style.flexWrap = '';
         });
+
+        const actionCells = workspace.querySelectorAll('.action-cell');
+        actionCells.forEach(el => {
+            el.style.width = 'max-content';
+            el.style.flexWrap = 'nowrap';
+            let w = el.getBoundingClientRect().width;
+            if (w > maxActionWidth) maxActionWidth = w;
+            el.style.width = '';
+            el.style.flexWrap = '';
+        });
         
-        container.style.setProperty('--left-width', Math.ceil(maxLeftWidth) + 5 + 'px');
+        container.style.setProperty('--left-width', Math.ceil(maxLeftWidth) + 10 + 'px');
         container.style.setProperty('--right-width', Math.ceil(maxRightWidth) + 15 + 'px');
+        container.style.setProperty('--action-width', Math.ceil(maxActionWidth) + 10 + 'px');
     } else {
         let maxLeftWidth = 20;
+        let maxActionWidth = 20;
         const leftSides = workspace.querySelectorAll('.left-side');
         leftSides.forEach(el => {
             el.style.width = 'max-content';
@@ -1020,7 +1055,17 @@ function renderWorkspace() {
             el.style.width = '';
             el.style.flexWrap = '';
         });
+        const actionCells = workspace.querySelectorAll('.action-cell');
+        actionCells.forEach(el => {
+            el.style.width = 'max-content';
+            el.style.flexWrap = 'nowrap';
+            let w = el.getBoundingClientRect().width;
+            if (w > maxActionWidth) maxActionWidth = w;
+            el.style.width = '';
+            el.style.flexWrap = '';
+        });
         container.style.setProperty('--expr-width', Math.ceil(maxLeftWidth) + 20 + 'px');
+        container.style.setProperty('--action-width', Math.ceil(maxActionWidth) + 10 + 'px');
     }
 }
 
@@ -1159,8 +1204,6 @@ function exportImage(mode) {
     
     container.classList.add('export-mode');
     
-    // NYTT: Et bittelite brøkdels sekund forsinkelse lar CSSen "krympe" boksen 
-    // før html2canvas tar bildet. Da unngår vi å få med det grå tomrommet.
     setTimeout(() => {
         html2canvas(container, { backgroundColor: '#ffffff', scale: 2 }).then(canvas => {
             let dataUrl = canvas.toDataURL('image/png');
