@@ -1,4 +1,5 @@
-/* Version: #18 - Strammere bokstaver og auto-krympt PNG-eksport */
+/* Version: #4 */
+/* Version: #4 - Sentrert likhetstegn med 1fr kolonner */
 :root {
     --bg-color: #f4f7f6;
     --paper-color: #ffffff;
@@ -135,10 +136,11 @@ header {
     overflow-y: auto;
 }
 
-/* Normal Grid (Ligningsmodus) - Oppdatert med variabler for sentrering */
+/* Normal Grid (Ligningsmodus) - Oppdatert med 1fr for perfekt symmetrisk sentrering av = */
 .math-row {
     display: grid;
-    grid-template-columns: var(--left-width, 1fr) 40px var(--right-width, 150px) auto;
+    /* Tvinger venstre og høyre side til å alltid ta nøyaktig like mye plass (1fr), = er låst i 40px i midten */
+    grid-template-columns: 1fr 40px 1fr var(--action-width, auto);
     align-items: center;
     justify-content: center;
     font-size: 24px;
@@ -239,7 +241,6 @@ sup {
 }
 
 /* --- Interaktive (klikkbare) AST-Noder --- */
-/* NYTT: Padding er satt til 0 1px for å tette gapet i f.eks. "2x" */
 .interactive-node {
     cursor: pointer;
     border-radius: 3px;
@@ -431,7 +432,8 @@ sup {
 /* Responsivitet for mindre skjermer */
 @media (max-width: 768px) {
     .math-row {
-        grid-template-columns: 1fr 20px 1fr 150px;
+        /* Oppdatert for mobil: 1fr for å holde = i midten */
+        grid-template-columns: 1fr 20px 1fr var(--action-width, auto);
         font-size: 18px;
     }
     .math-row.expression-mode {
@@ -478,16 +480,16 @@ sup {
     resize: vertical;
 }
 
-/* --- NYTT: Auto-krymping av bildet (Cropping) --- */
+/* --- Auto-krymping av bildet (Cropping) --- */
 #workspace-container.export-mode {
     min-height: auto; 
-    width: max-content; /* Låser boksen akkurat rundt ligningen */
+    width: max-content; 
     max-width: 100%; 
-    padding: 20px; /* Ca. 5mm ramme */
+    padding: 20px; 
     margin: 0 auto; 
-    background-color: #ffffff; /* Garanterer hvit bakgrunn */
+    background-color: #ffffff; 
     box-shadow: none; 
-    border: none; /* Ren fil, ingen border */
+    border: none; 
 }
 
 #workspace-container.export-mode .math-row {
@@ -529,3 +531,4 @@ sup {
     background: var(--accent-color);
     color: white;
 }
+/* Version: #4 */
