@@ -1,4 +1,4 @@
-/* Version: #33 - Fikset sentrering slik at likhetstegnene ( = ) alltid står under hverandre */
+/* Version: #35 - Låste grid-kolonner, auto-crop og brøkbeskyttelse */
 
 const examples =[
     { label: "2(x + 3) = 14", left: "2(x + 3)", right: "14", mode: "equation", group: "Ligninger (Parenteser)" },
@@ -223,8 +223,9 @@ function parseTokens(tokens) {
                 node = { type: op === '*' ? 'Mul' : 'Div', left: node, right: parseFactor(), implicit: false, id: uid() };
             } else if (p.type === 'NUM' || p.type === 'x' || p.type === '(') {
                 let implicitRight = parseFactor();
-                
                 let merged = false;
+                
+                // Binder sammen tall og bokstaver (f.eks 2 og x) under innskriving
                 if (node.type === 'FlatPoly' && Object.keys(node.poly).length === 1 && node.poly['0'] !== undefined) {
                     if (implicitRight.type === 'FlatPoly' && Object.keys(implicitRight.poly).length === 1 && implicitRight.poly['1'] !== undefined) {
                         node = { type: 'FlatPoly', poly: {1: node.poly['0'] * implicitRight.poly['1']}, id: uid() };
@@ -235,15 +236,12 @@ function parseTokens(tokens) {
                              implicitRight.right.type === 'FlatPoly' && Object.keys(implicitRight.right.poly).length === 1 && implicitRight.right.poly['0'] !== undefined) {
                         let exp = implicitRight.right.poly['0'];
                         let coef = node.poly['0'] * Math.pow(implicitRight.left.poly['1'], exp);
-                        let newPoly = {};
-                        newPoly[exp] = coef;
+                        let newPoly = {}; newPoly[exp] = coef;
                         node = { type: 'FlatPoly', poly: newPoly, id: uid() };
                         merged = true;
                     }
                 }
-                if (!merged) {
-                    node = { type: 'Mul', left: node, right: implicitRight, implicit: true, id: uid() };
-                }
+                if (!merged) node = { type: 'Mul', left: node, right: implicitRight, implicit: true, id: uid() };
             } else break;
         }
         return node;
@@ -283,7 +281,7 @@ function parseSide(sideStr) {
     return parseTokens(tokenize(sideStr));
 }
 
-// === SEKSJON: Evaluering ===
+// === SEKSJON: Evaluering med BRØKBESKYTTELSE ===
 
 function evaluateToFraction(node) {
     if (!node) return { num: {0:0}, den: {0:1} };
@@ -333,6 +331,7 @@ function evaluateToPoly(node) {
     let div = polyDivAlg(frac.num, frac.den);
     if (Object.keys(div.r).length === 0) {
         let denKeys = Object.keys(frac.den);
+        // Tillater kun heltallsdivisjon for å unngå brøker som blir stygge desimaltall
         if (denKeys.length === 1 && denKeys[0] === '0') {
             let dVal = frac.den['0'];
             if (Math.abs(dVal) !== 1) {
@@ -904,6 +903,71 @@ function handleSimplify() {
     } catch(err) { alert("Feil under utregning: " + err); }
 }
 
+// === SEKSJON: Den nye og idiotsikre Grid-Beregneren ===
+window.updateGridWidths = function() {
+    const container = document.getElementById('workspace-container');
+    const workspace = document.getElementById('workspace');
+    if (!container || !workspace) return;
+
+    if (state.currentMode === 'equation') {
+        let maxL = 0, maxR = 0, maxA = 0;
+        
+        workspace.querySelectorAll('.left-side').forEach(el => {
+            el.style.width = 'max-content'; el.style.flexWrap = 'nowrap';
+            maxL = Math.max(maxL, el.getBoundingClientRect().width);
+            el.style.width = ''; el.style.flexWrap = '';
+        });
+
+        workspace.querySelectorAll('.right-side').forEach(el => {
+            el.style.width = 'max-content'; el.style.flexWrap = 'nowrap';
+            maxR = Math.max(maxR, el.getBoundingClientRect().width);
+            el.style.width = ''; el.style.flexWrap = '';
+        });
+
+        workspace.querySelectorAll('.action-cell').forEach(el => {
+            if (window.getComputedStyle(el).display !== 'none') {
+                const box = el.querySelector('.action-box');
+                if (box) {
+                    el.style.width = 'max-content'; el.style.flexWrap = 'nowrap';
+                    maxA = Math.max(maxA, el.getBoundingClientRect().width);
+                    el.style.width = ''; el.style.flexWrap = '';
+                } else if (!container.classList.contains('export-mode')) {
+                    el.style.width = 'max-content'; el.style.flexWrap = 'nowrap';
+                    maxA = Math.max(maxA, el.getBoundingClientRect().width);
+                    el.style.width = ''; el.style.flexWrap = '';
+                }
+            }
+        });
+        
+        container.style.setProperty('--left-width', Math.ceil(maxL) + 5 + 'px');
+        container.style.setProperty('--right-width', Math.ceil(maxR) + 5 + 'px');
+        container.style.setProperty('--action-width', maxA > 0 ? Math.ceil(maxA) + 15 + 'px' : '0px');
+    } else {
+        let maxExpr = 0, maxA = 0;
+        workspace.querySelectorAll('.left-side').forEach(el => {
+            el.style.width = 'max-content'; el.style.flexWrap = 'nowrap';
+            maxExpr = Math.max(maxExpr, el.getBoundingClientRect().width);
+            el.style.width = ''; el.style.flexWrap = '';
+        });
+        workspace.querySelectorAll('.action-cell').forEach(el => {
+            if (window.getComputedStyle(el).display !== 'none') {
+                const box = el.querySelector('.action-box');
+                if (box) {
+                    el.style.width = 'max-content'; el.style.flexWrap = 'nowrap';
+                    maxA = Math.max(maxA, el.getBoundingClientRect().width);
+                    el.style.width = ''; el.style.flexWrap = '';
+                } else if (!container.classList.contains('export-mode')) {
+                    el.style.width = 'max-content'; el.style.flexWrap = 'nowrap';
+                    maxA = Math.max(maxA, el.getBoundingClientRect().width);
+                    el.style.width = ''; el.style.flexWrap = '';
+                }
+            }
+        });
+        container.style.setProperty('--expr-width', Math.ceil(maxExpr) + 10 + 'px');
+        container.style.setProperty('--action-width', maxA > 0 ? Math.ceil(maxA) + 15 + 'px' : '0px');
+    }
+}
+
 // === SEKSJON: DOM & Rendering ===
 
 function renderWorkspace() {
@@ -1003,70 +1067,7 @@ function renderWorkspace() {
     const container = document.getElementById('workspace-container');
     container.scrollTop = container.scrollHeight;
 
-    // NYTT: Måler bredden av ALLE kolonner, inkludert handlingspanelet, slik at CSS-grid
-    // bruker faste kolonner på tvers av hele oppgaven. Dette sikrer at = tegnet ALDRI flytter på seg!
-    if (state.currentMode === 'equation') {
-        let maxRightWidth = 20; 
-        let maxLeftWidth = 20;
-        let maxActionWidth = 20;
-        
-        const leftSides = workspace.querySelectorAll('.left-side');
-        leftSides.forEach(el => {
-            el.style.width = 'max-content';
-            el.style.flexWrap = 'nowrap';
-            let w = el.getBoundingClientRect().width;
-            if (w > maxLeftWidth) maxLeftWidth = w;
-            el.style.width = '';
-            el.style.flexWrap = '';
-        });
-
-        const rightSides = workspace.querySelectorAll('.right-side');
-        rightSides.forEach(el => {
-            el.style.width = 'max-content';
-            el.style.flexWrap = 'nowrap';
-            let w = el.getBoundingClientRect().width;
-            if (w > maxRightWidth) maxRightWidth = w;
-            el.style.width = '';
-            el.style.flexWrap = '';
-        });
-
-        const actionCells = workspace.querySelectorAll('.action-cell');
-        actionCells.forEach(el => {
-            el.style.width = 'max-content';
-            el.style.flexWrap = 'nowrap';
-            let w = el.getBoundingClientRect().width;
-            if (w > maxActionWidth) maxActionWidth = w;
-            el.style.width = '';
-            el.style.flexWrap = '';
-        });
-        
-        container.style.setProperty('--left-width', Math.ceil(maxLeftWidth) + 10 + 'px');
-        container.style.setProperty('--right-width', Math.ceil(maxRightWidth) + 15 + 'px');
-        container.style.setProperty('--action-width', Math.ceil(maxActionWidth) + 10 + 'px');
-    } else {
-        let maxLeftWidth = 20;
-        let maxActionWidth = 20;
-        const leftSides = workspace.querySelectorAll('.left-side');
-        leftSides.forEach(el => {
-            el.style.width = 'max-content';
-            el.style.flexWrap = 'nowrap';
-            let w = el.getBoundingClientRect().width;
-            if (w > maxLeftWidth) maxLeftWidth = w;
-            el.style.width = '';
-            el.style.flexWrap = '';
-        });
-        const actionCells = workspace.querySelectorAll('.action-cell');
-        actionCells.forEach(el => {
-            el.style.width = 'max-content';
-            el.style.flexWrap = 'nowrap';
-            let w = el.getBoundingClientRect().width;
-            if (w > maxActionWidth) maxActionWidth = w;
-            el.style.width = '';
-            el.style.flexWrap = '';
-        });
-        container.style.setProperty('--expr-width', Math.ceil(maxLeftWidth) + 20 + 'px');
-        container.style.setProperty('--action-width', Math.ceil(maxActionWidth) + 10 + 'px');
-    }
+    updateGridWidths(); // Kall den nye magiske layout-fikseren hver gang noe tegnes
 }
 
 function bindActionEvents() {
@@ -1203,6 +1204,7 @@ function exportImage(mode) {
     container.insertBefore(titleEl, container.firstChild);
     
     container.classList.add('export-mode');
+    updateGridWidths(); // Re-kalkulerer den tette beskjøringen FØR bildet tas
     
     setTimeout(() => {
         html2canvas(container, { backgroundColor: '#ffffff', scale: 2 }).then(canvas => {
@@ -1235,6 +1237,7 @@ function exportImage(mode) {
             titleEl.remove();
             subtitleEl.remove();
             if (descEl) descEl.remove();
+            updateGridWidths(); // Setter layouten tilbake til normal etter at bildet er tatt
         });
     }, 50);
 }
